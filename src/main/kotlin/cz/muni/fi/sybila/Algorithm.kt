@@ -1,7 +1,9 @@
 package cz.muni.fi.sybila
 
 import com.github.sybila.*
+import com.github.sybila.checker.Operator
 import com.github.sybila.checker.StateMap
+import com.github.sybila.checker.operator.OrOperator
 import com.github.sybila.checker.operator.TrueOperator
 import com.github.sybila.checker.partition.asSingletonPartition
 import com.github.sybila.ode.model.OdeModel
@@ -21,13 +23,16 @@ internal class Algorithm<T: Any>(
     private val executor = Executors.newFixedThreadPool(config.parallelism)
     private val pending = ArrayList<Future<*>>()
 
-    fun computeComponents(): ResultSet {
+    fun computeComponents(): StateMap<T> {
         startAction(TrueOperator(allStates.asSingletonPartition()).compute())
         blockWhilePending()
 
-        val result = store.getComponentMapping(count).mapIndexed { i, map -> "${i+1} attractor(s)" to listOf(map) }.toMap()
+        val components = store.getComponentMapping(count)
+        val channel = allStates.asSingletonChannel()
+        return components.fold<StateMap<T>, Operator<T>>(components[0].asOperator()) { a, b -> OrOperator(a, b.asOperator(), channel) }.compute()
+        //val result = store.getComponentMapping(count).mapIndexed { i, map -> "${i+1} attractor(s)" to listOf(map) }.toMap()
 
-        return allStates.exportResults(odeModel, result)
+        //return allStates.exportResults(odeModel, result)
     }
 
     private fun runAction(universe: StateMap<T>) {

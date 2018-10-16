@@ -5,12 +5,14 @@ import com.github.sybila.checker.Model
 import com.github.sybila.checker.Solver
 import com.github.sybila.checker.StateMap
 import com.github.sybila.checker.Transition
+import com.github.sybila.checker.map.mutable.HashStateMap
 import com.github.sybila.checker.solver.BoolSolver
 import com.github.sybila.huctl.DirectionFormula
 import com.github.sybila.huctl.Formula
 import com.github.sybila.ode.generator.rect.Rectangle
 import com.github.sybila.ode.generator.rect.RectangleOdeModel
 import com.github.sybila.ode.generator.rect.RectangleSolver
+import com.github.sybila.ode.generator.rect.rectangleOf
 import com.github.sybila.ode.model.OdeModel
 import com.google.gson.Gson
 import java.io.File
@@ -105,7 +107,7 @@ fun H(q: Double): Double = when (q) {
 }
 
 fun next(q: Double) = A(q, G(H(q)))
-
+/*
 fun iA(avrQ: Interval, nextQ: Interval): Interval = (1 - w).asI() * avrQ + w.asI() * nextQ
 
 fun iG(p: Interval): Interval {
@@ -122,14 +124,20 @@ fun iG(p: Interval): Interval {
 fun iH(q: Interval): Interval = Interval(H(q.x1), H(q.x2))
 
 fun iNext(q: Interval) = iA(q, iG(iH(q)))
+*/
+
+
+val paramMin = Math.pow(10.0, -1.65)
+val paramMax = Math.pow(10.0, -1.05)
 
 class REDModel(
+        val pMin: Double, val pMax: Double,
         val solver: RectangleSolver = RectangleSolver(Rectangle(doubleArrayOf(0.0, 1.0)))
 ) : Model<MutableSet<Rectangle>>, Solver<MutableSet<Rectangle>> by solver {
 
     private val min = 45.0
     private val max = 65.0
-    private val thresholdCount = 200
+    private val thresholdCount = 1000
 
     private val thresholds = run {
         val step = (max - min) / (thresholdCount - 1)
@@ -142,17 +150,35 @@ class REDModel(
 
     private val transitions: List<Pair<Int, Int>> = run {
         states.indices.flatMap { a -> states.indices.map { b -> a to b } }.filter { (from, to) ->
-            val next = iNext(states[from])
+            val next = iNext(states[from], Interval(pMin, pMax))
             next.intersects(states[to])
         }
     }
+
+    fun iA(avrQ: Interval, nextQ: Interval, w: Interval): Interval = (1.0.asI() - w) * avrQ + w * nextQ
+
+    fun iG(p: Interval): Interval {
+        if (p.x1 >= p0) return 0.0.asI()
+        val factor = M * k
+        val denominator = (c/n).asI() * isqrt(p)
+        val fraction = factor.asI() / denominator
+        val result = (c/M).asI() * (fraction - R0.asI())
+        return result.restrictUp(B).restrictDown(0.0)
+    }
+
+    // Function is monotonic. That means we can approximate it using
+// simple image of the interval, no need for extra treatment.
+    fun iH(q: Interval): Interval = Interval(H(q.x1), H(q.x2))
+
+    fun iNext(q: Interval, w: Interval) = iA(q, iG(iH(q)), w)
+
 
     val fakeOdeModel: OdeModel = OdeModel(
             variables = listOf(
                     OdeModel.Variable("q", min to max, thresholds, null, emptyList())
             ),
             parameters = listOf(
-                    OdeModel.Parameter("p", 0.0 to 1.0)
+                    OdeModel.Parameter("p", paramMin to paramMax)
             )
     )
 
@@ -187,12 +213,31 @@ class REDModel(
 }
 
 fun main(args: Array<String>) {
-    val ts = REDModel()
+    val pThresholds = 200
+    val step = (paramMax - paramMin) / (pThresholds - 1)
+    val thresholds = (0 until pThresholds).map { i -> paramMin + step*i } + paramMax
+    val paramIntervals = thresholds.dropLast(1).zip(thresholds.drop(1))
     val fakeConfig = Config()
-    val result = ts.makeExplicit(fakeConfig).runAnalysis(ts.fakeOdeModel, fakeConfig)
+    val solver = RectangleSolver(Rectangle(doubleArrayOf(paramMin, paramMax)))
+    solver.run {
+        val result = HashStateMap<MutableSet<Rectangle>>(default = mutableSetOf())
+        var lastTs: REDModel? = null
+        for ((a, b) in paramIntervals) {
+            println("Compute $a $b")
+            val ts = REDModel(pMin = a, pMax = b, solver = solver)
+            lastTs = ts
+            val partialResult: StateMap<MutableSet<Rectangle>> = ts.makeExplicit(fakeConfig).runAnalysis(ts.fakeOdeModel, fakeConfig)
+            val param = mutableSetOf(rectangleOf(a, b))
+            for ((s, _) in partialResult.entries()) {
+                result[s] = result[s] or param
+            }
+        }
 
-    val json = Gson()
-    File("/Users/daemontus/Downloads/result1.json").writeText(json.toJson(result))
+        val rs = solver.exportResults(lastTs!!.fakeOdeModel, mapOf("all" to listOf(result)))
+        val json = Gson()
+        File("/Users/daemontus/Downloads/result1.json").writeText(json.toJson(rs))
+    }
+
 }
 
 private fun REDModel.makeExplicit(
@@ -217,7 +262,7 @@ private fun REDModel.makeExplicit(
     return ExplicitOdeFragment(this.solver, stateCount, pivotChooser, successors, predecessors)
 }
 
-private fun <T: Any> ExplicitOdeFragment<T>.runAnalysis(odeModel: OdeModel, config: Config): ResultSet {
+private fun <T: Any> ExplicitOdeFragment<T>.runAnalysis(odeModel: OdeModel, config: Config): StateMap<T> {
     val algorithm = Algorithm(config, this, odeModel)
 
     val start = System.currentTimeMillis()

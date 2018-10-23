@@ -29,6 +29,7 @@ internal class Algorithm<T: Any>(
 
         val components = store.getComponentMapping(count)
         val channel = allStates.asSingletonChannel()
+        println("Max components: ${count.size}")
         return components.fold<StateMap<T>, Operator<T>>(components[0].asOperator()) { a, b -> OrOperator(a, b.asOperator(), channel) }.compute()
         //val result = store.getComponentMapping(count).mapIndexed { i, map -> "${i+1} attractor(s)" to listOf(map) }.toMap()
 

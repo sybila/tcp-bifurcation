@@ -46,7 +46,13 @@ data class Interval(
 
     private fun inverse(): Interval {
         //if (x1 <= 0 && 0 <= x2) error("Division by zero")
-        return Interval(1.0 / x2, 1.0 / x1)
+        val iX1 = 1.0 / x2
+        val iX2 = 1.0 / x1
+        return if (iX1 > iX2) {
+            Interval(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY)
+        } else {
+            Interval(1.0 / x2, 1.0 / x1)
+        }
     }
 
     operator fun div(y: Interval): Interval = this * y.inverse()
@@ -67,19 +73,19 @@ data class Interval(
     fun union(other: Interval): Interval = Interval(min(this.x1, other.x1), max(this.x2, other.x2))
 
 }
-
+/*
 private fun isqrt(x: Interval): Interval {
     if (x.x1 < 0) error("Sqrt of negative: $x")
     // sqrt is monotone and positive
     return Interval(sqrt(x.x1), sqrt(x.x2))
-}
+}*/
 
 fun Double.asI(): Interval = Interval(this, this)
-fun Double.asI(delta: Double): Interval = Interval(this - delta, this + delta)
+//fun Double.asI(delta: Double): Interval = Interval(this - delta, this + delta)
 
 private fun min(vararg x: Double): Double = x.fold(Double.POSITIVE_INFINITY) { a, i -> if (a < i) a else i }
 private fun max(vararg x: Double): Double = x.fold(Double.NEGATIVE_INFINITY) { a, i -> if (a > i) a else i }
-
+/*
 const val maxQ: Double = 100.0
 const val minQ: Double = 50.0
 const val c: Double = 1500.0
@@ -106,7 +112,7 @@ fun H(q: Double): Double = when (q) {
     else -> error("Invalid value of queue size $q. Allowed interval is [0.0..$B]")
 }
 
-fun next(q: Double) = A(q, G(H(q)))
+fun next(q: Double) = A(q, G(H(q)))*/
 /*
 fun iA(avrQ: Interval, nextQ: Interval): Interval = (1 - w).asI() * avrQ + w.asI() * nextQ
 
@@ -126,14 +132,14 @@ fun iH(q: Interval): Interval = Interval(H(q.x1), H(q.x2))
 fun iNext(q: Interval) = iA(q, iG(iH(q)))
 */
 
-
+/*
 val paramMin = Math.pow(10.0, -1.65)
 val paramMax = Math.pow(10.0, -1.05)
 
 class REDModel(
         val pMin: Double, val pMax: Double,
         val solver: RectangleSolver = RectangleSolver(Rectangle(doubleArrayOf(0.0, 1.0)))
-) : Model<MutableSet<Rectangle>>, Solver<MutableSet<Rectangle>> by solver {
+) : SolverModel<MutableSet<Rectangle>>, Solver<MutableSet<Rectangle>> by solver {
 
     private val min = 45.0
     private val max = 65.0
@@ -238,9 +244,11 @@ fun main(args: Array<String>) {
         File("/Users/daemontus/Downloads/result1.json").writeText(json.toJson(rs))
     }
 
-}
+}*/
 
-private fun REDModel.makeExplicit(
+interface SolverModel<P : Any> : Model<P>, Solver<P>
+
+fun SolverModel<MutableSet<Rectangle>>.makeExplicit(
         config: Config
 ): ExplicitOdeFragment<MutableSet<Rectangle>> {
     val step = (stateCount / 100).coerceAtLeast(100)
@@ -259,10 +267,10 @@ private fun REDModel.makeExplicit(
         { fragment -> StructureAndCardinalityPivotChooser(fragment) }
     }
 
-    return ExplicitOdeFragment(this.solver, stateCount, pivotChooser, successors, predecessors)
+    return ExplicitOdeFragment(this, stateCount, pivotChooser, successors, predecessors)
 }
 
-private fun <T: Any> ExplicitOdeFragment<T>.runAnalysis(odeModel: OdeModel, config: Config): StateMap<T> {
+fun <T: Any> ExplicitOdeFragment<T>.runAnalysis(odeModel: OdeModel, config: Config): StateMap<T> {
     val algorithm = Algorithm(config, this, odeModel)
 
     val start = System.currentTimeMillis()

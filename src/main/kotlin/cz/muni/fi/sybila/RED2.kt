@@ -116,7 +116,7 @@ class REDNoParam(
 
     private val min = 40.0
     private val max = 80.0
-    private val tCount = 10
+    private val tCount = 5000
 
     private val thresholds = run {
         val step = (max - min) / (tCount - 1)
@@ -124,7 +124,7 @@ class REDNoParam(
         (0 until tCount).map { i -> min + step*i } + max
     }
 
-    private val states: List<Interval> = run {
+    val states: List<Interval> = run {
         thresholds.dropLast(1).zip(thresholds.drop(1)).map { Interval(it.first, it.second) }
     }
 
@@ -141,7 +141,7 @@ class REDNoParam(
             sim.nextQueue(dropProb.x2), sim.nextQueue(dropProb.x1)
     )
 
-    private fun average(q: Interval) = ((1.0 - w).asI() * q) + (w.asI() * nextQueue(dropProbability(q)))
+    fun average(q: Interval) = ((1.0 - w).asI() * q) + (w.asI() * nextQueue(dropProbability(q)))
 
     private val transitions: List<Pair<Int, Int>> = run {
         val jumpsTo = states.map { from -> average(from).also { to ->
@@ -153,7 +153,7 @@ class REDNoParam(
         states.indices.asSequence().flatMap { a -> states.indices.asSequence().map { b -> a to b } }.filter { (from, to) ->
             if (from % 1000 == 0 && to == 0) println("transitions: $from/${states.size}")
             jumpsTo[from].intersects(states[to])
-        }.toList().also { println(it) }
+        }.toList()//.also { println(it) }
     }
 
     override val stateCount: Int = states.size
@@ -211,7 +211,7 @@ class REDParam(
         (0 until tCount).map { i -> min + step*i } + max
     }
 
-    private val states: List<Interval> = run {
+    val states: List<Interval> = run {
         thresholds.dropLast(1).zip(thresholds.drop(1)).map { Interval(it.first, it.second) }
     }
 
@@ -348,12 +348,46 @@ fun main(args: Array<String>) {
     val fakeConfig = Config()
     val w = Math.pow(10.0, -1.35)
 
-    val ts = REDParam(w)
+    /*val ts = REDParam(w)
 
     val r = ts.makeExplicit(fakeConfig).runAnalysis(ts.fakeOdeModel, fakeConfig)
     val rs = ts.exportResults(ts.fakeOdeModel, mapOf("all" to listOf(r)))
 
     val json = Gson()
-    File("/Users/daemontus/Downloads/result.json").writeText(json.toJson(rs))
+    File("/Users/daemontus/Downloads/result.json").writeText(json.toJson(rs))*/
 
+    /*val ts = REDNoParam(w)
+
+    ts.makeExplicit(fakeConfig).runAnalysis(ts.fakeOdeModel, fakeConfig)
+
+*/
+    val ts = REDParam()
+    val sim = RED2simulation(w)
+
+    ts.run {
+        val from = ts.states[100]
+        100.successors(true).forEach {
+            if (1546 == it.target) {
+                val to = ts.states[it.target]
+                println("$from -> ${it.target} for ${it.bound}")
+            }
+        }
+
+    }
+    /*var q = 45.0
+    repeat(1000) {
+        q = sim.next(q)
+        println(q)
+    }
+    val l = q - 0.01
+    val h = q + 0.01
+    ts.makeExplicit(fakeConfig).runAnalysis(ts.fakeOdeModel, fakeConfig)
+    println("[$l, $h] goes to [${sim.next(h)}, ${sim.next(l)}] and approx as ${ts.average(Interval(l,h))}")
+
+    ts.run {
+        val eq = states.find { it.x1 <= q && q <= it.x2 }!!
+        val eqIndex = states.indexOf(eq)
+        println("Eq: $eq, $eqIndex, succ: ${eqIndex.successors(true).asSequence().map { it.target }.toList()}")
+        println("Eq goes to: ${ts.average(eq)}")
+    }*/
 }

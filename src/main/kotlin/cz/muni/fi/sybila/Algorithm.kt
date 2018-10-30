@@ -29,7 +29,7 @@ internal class Algorithm<T: Any>(
 
         val components = store.getComponentMapping(count)
         val channel = allStates.asSingletonChannel()
-        println("Max components: ${count.size}")
+        /*println("Max components: ${count.size}")
         println("States in a component:  ${components.last().entries().asSequence().count()}")
         val map = components.last()
         allStates.run {
@@ -40,7 +40,7 @@ internal class Algorithm<T: Any>(
         val states = map.entries().asSequence().map { it.first }.toSet()
         val transitions = states.map { source -> source to allStates.run { source.successors(true).asSequence().map { it.target }.toList() } }.toMap()
         val g = Graph(states, transitions)
-        println("Is bipartite: ${g.isBipartite()}")
+        println("Is bipartite: ${g.isBipartite()}")*/
         return components.fold<StateMap<T>, Operator<T>>(components[0].asOperator()) { a, b -> OrOperator(a, b.asOperator(), channel) }.compute()
         //val result = store.getComponentMapping(count).mapIndexed { i, map -> "${i+1} attractor(s)" to listOf(map) }.toMap()
 

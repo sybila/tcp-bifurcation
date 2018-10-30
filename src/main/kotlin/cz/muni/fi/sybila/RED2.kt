@@ -1,7 +1,6 @@
 package cz.muni.fi.sybila
 
 import com.github.sybila.Config
-import com.github.sybila.checker.Model
 import com.github.sybila.checker.Solver
 import com.github.sybila.checker.StateMap
 import com.github.sybila.checker.Transition
@@ -13,11 +12,13 @@ import com.github.sybila.ode.generator.rect.RectangleSolver
 import com.github.sybila.ode.generator.rect.rectangleOf
 import com.github.sybila.ode.model.OdeModel
 import com.google.gson.Gson
+import cz.muni.fi.sybila.red.Interval
+import cz.muni.fi.sybila.red.asI
 import java.io.File
 
 /*
 //Settings from the shorter paper with more "high performance" network settings
-object C {
+object ConstDefault {
     val qMin = 250.0
     val qMax = 750.0
     val pMax = 0.1
@@ -26,13 +27,13 @@ object C {
     val K = Math.sqrt(3.0/2.0)
     val B = 3750.0
     val d = 0.1
-    val C = 75000000.0
+    val ConstDefault = 75000000.0
     val pL = run {
-        val x = (N * M * K) / (d * C + B * M)
+        val x = (N * M * K) / (d * ConstDefault + B * M)
         x * x
     }
     val pU = run {
-        val x = (N * M * K) / (d * C)
+        val x = (N * M * K) / (d * ConstDefault)
         x * x
     }
 }*/
@@ -40,15 +41,15 @@ object C {
 
 //First setting in the longer paper, shows bifurcation with respect to w
 object C {
-    val qMin = 50.0
-    val qMax = 100.0
+    val qMin = 250.0
+    val qMax = 750.0
     val pMax = 0.1
-    val N = 20
-    val M = 500
-    val K = Math.sqrt(8.0/3.0)
-    val B = 300.0
+    val N = 250
+    val M = 4000
+    val K = Math.sqrt(3.0/2.0)
+    val B = 3750.0
     val d = 0.1
-    val C = 1500000
+    val C = 75000000
     val pL = run {
         val x = (N * M * K) / (d * C + B * M)
         x * x
@@ -60,7 +61,7 @@ object C {
 }
 
 /*
-object C {
+object ConstDefault {
     val qMin = 75.0
     val qMax = 100.0
     val pMax = 0.3
@@ -69,13 +70,13 @@ object C {
     val K = Math.sqrt(8.0/3.0)
     val B = 300.0
     val d = 0.1
-    val C = 1500000
+    val ConstDefault = 1500000
     val pL = run {
-        val x = (N * M * K) / (d * C + B * M)
+        val x = (N * M * K) / (d * ConstDefault + B * M)
         x * x
     }
     val pU = run {
-        val x = (N * M * K) / (d * C)
+        val x = (N * M * K) / (d * ConstDefault)
         x * x
     }
 }
@@ -114,8 +115,8 @@ class REDNoParam(
 
     private val sim = RED2simulation(w)
 
-    private val min = 40.0
-    private val max = 80.0
+    private val min = 200.0
+    private val max = 500.0
     private val tCount = 5000
 
     private val thresholds = run {
@@ -196,14 +197,14 @@ class REDNoParam(
 }
 
 class REDParam(
-        private val pMin: Double = Math.pow(10.0, -1.35), // 0.0446
-        private val pMax: Double = Math.pow(10.0, -1.25),
+        private val pMin: Double = 0.1, // Math.pow(10.0, -1.35), // 0.0446
+        private val pMax: Double = 0.3, // Math.pow(10.0, -1.25),
         solver: RectangleSolver = RectangleSolver(rectangleOf(pMin, pMax))
 ) : SolverModel<RParams>, IntervalSolver<RParams> by solver, Solver<RParams> by solver {
 
-    private val min = 40.0
-    private val max = 80.0
-    private val tCount = 5000
+    private val min = 300.0
+    private val max = 500.0
+    private val tCount = 1000
 
     private val thresholds = run {
         val step = (max - min) / (tCount - 1)
@@ -242,7 +243,7 @@ class REDParam(
             numNextQueue(dropProb.x2), numNextQueue(dropProb.x1)
     )
 
-    private val r = 10000.0
+    private val r = 1000.0
     private fun ceil(d: Double) = Math.ceil(d * r) / r
     private fun floor(d: Double) = Math.floor(d * r) / r
 
@@ -348,20 +349,20 @@ fun main(args: Array<String>) {
     val fakeConfig = Config()
     val w = Math.pow(10.0, -1.35)
 
-    /*val ts = REDParam(w)
+    val ts = REDParam()
 
     val r = ts.makeExplicit(fakeConfig).runAnalysis(ts.fakeOdeModel, fakeConfig)
     val rs = ts.exportResults(ts.fakeOdeModel, mapOf("all" to listOf(r)))
 
     val json = Gson()
-    File("/Users/daemontus/Downloads/result.json").writeText(json.toJson(rs))*/
+    File("/Users/daemontus/Downloads/result.json").writeText(json.toJson(rs))
 
     /*val ts = REDNoParam(w)
 
-    ts.makeExplicit(fakeConfig).runAnalysis(ts.fakeOdeModel, fakeConfig)
+    ts.makeExplicit(fakeConfig).runAnalysis(ts.fakeOdeModel, fakeConfig)*/
 
-*/
-    val ts = REDParam()
+
+    /*val ts = REDParam()
     val sim = RED2simulation(w)
 
     ts.run {
@@ -373,7 +374,7 @@ fun main(args: Array<String>) {
             }
         }
 
-    }
+    }*/
     /*var q = 45.0
     repeat(1000) {
         q = sim.next(q)

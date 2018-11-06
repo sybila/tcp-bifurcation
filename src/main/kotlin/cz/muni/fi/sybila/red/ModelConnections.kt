@@ -18,7 +18,7 @@ import java.io.File
 class ModelConnections(
         private val connectionsBounds: Pair<Double, Double> = 200.0 to 350.0,
         solver: RectangleSolver = RectangleSolver(rectangleOf(connectionsBounds.first, connectionsBounds.second))
-) : Model(solver = solver, varBounds = 200.0 to 850.0, thresholdCount = 5000) {
+) : Model(solver = solver, varBounds = 200.0 to 850.0, thresholdCount = 2500) {
 
     private val sim = ModelSimulation(this)
     private val paramBounds = irOf(connectionsBounds.first, connectionsBounds.second)
@@ -33,7 +33,7 @@ class ModelConnections(
     // monotonic decreasing - we can just eval
     private fun nextQueue(p: IR) = irOf(sim.nextQueue(p.getH(0)), sim.nextQueue(p.getL(0)))
 
-    private val roundTo = 1
+    private val roundTo = 0
 
     override val transitionArray: Array<Array<RParams?>> = Array(stateCount) { from ->
         val q = states[from]
@@ -161,7 +161,7 @@ fun main(args: Array<String>) {
     val fakeConfig = Config()
     val system = ModelConnections()
 
-    val r = system.makeExplicit(fakeConfig).runAnalysis(system.fakeOdeModel, fakeConfig)
+    val r = system.makeExplicit(fakeConfig).runAnalysis(fakeConfig)
     val rs = system.exportResults(system.fakeOdeModel, mapOf("all" to listOf(r)))
 
     val json = Gson()

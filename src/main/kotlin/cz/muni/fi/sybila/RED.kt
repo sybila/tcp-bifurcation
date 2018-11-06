@@ -6,6 +6,8 @@ import com.github.sybila.checker.Solver
 import com.github.sybila.checker.StateMap
 import com.github.sybila.ode.generator.rect.Rectangle
 import com.github.sybila.ode.model.OdeModel
+import cz.muni.fi.sybila.deadlock.IParams
+import cz.muni.fi.sybila.deadlock.IntRect
 
 /*
 private fun isqrt(x: Interval): Interval {
@@ -199,8 +201,31 @@ fun SolverModel<MutableSet<Rectangle>>.makeExplicit(
     return ExplicitOdeFragment(this, stateCount, pivotChooser, successors, predecessors)
 }
 
-fun <T: Any> ExplicitOdeFragment<T>.runAnalysis(odeModel: OdeModel, config: Config): StateMap<T> {
-    val algorithm = Algorithm(config, this, odeModel)
+fun SolverModel<MutableSet<IntRect>>.makeExplicitInt(
+        config: Config
+): ExplicitOdeFragment<MutableSet<IntRect>> {
+    val step = (stateCount / 100).coerceAtLeast(100)
+    val successors = Array(stateCount) { s ->
+        if (s % step == 0) config.logStream?.println("Successor progress: $s/$stateCount")
+        s.successors(true).asSequence().toList()
+    }
+    val predecessors = Array(stateCount) { s ->
+        if (s % step == 0) config.logStream?.println("Predecessor progress: $s/$stateCount")
+        s.predecessors(true).asSequence().toList()
+    }
+
+    val pivotChooser: (ExplicitOdeFragment<IParams>) -> PivotChooser<IParams> = if (config.disableHeuristic) {
+        { fragment -> NaivePivotChooser(fragment) }
+    } else {
+        { fragment -> StructureAndCardinalityPivotChooser(fragment) }
+    }
+
+    return ExplicitOdeFragment(this, stateCount, pivotChooser, successors, predecessors)
+}
+
+
+fun <T: Any> ExplicitOdeFragment<T>.runAnalysis(config: Config, initialUniverse: StateMap<T>? = null): StateMap<T> {
+    val algorithm = Algorithm(config, this, initialUniverse)
 
     val start = System.currentTimeMillis()
     return algorithm.use {

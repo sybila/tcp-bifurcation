@@ -73,7 +73,7 @@ fun main(args: Array<String>) {
     val fakeConfig = Config()
     val system = ModelWeight()
 
-    val r = system.makeExplicit(fakeConfig).runAnalysis(system.fakeOdeModel, fakeConfig)
+    val r = system.makeExplicit(fakeConfig).runAnalysis(fakeConfig)
     val rs = system.exportResults(system.fakeOdeModel, mapOf("all" to listOf(r)))
 
     val json = Gson()

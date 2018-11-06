@@ -351,7 +351,7 @@ fun main(args: Array<String>) {
 
     val ts = REDParam()
 
-    val r = ts.makeExplicit(fakeConfig).runAnalysis(ts.fakeOdeModel, fakeConfig)
+    val r = ts.makeExplicit(fakeConfig).runAnalysis(fakeConfig)
     val rs = ts.exportResults(ts.fakeOdeModel, mapOf("all" to listOf(r)))
 
     val json = Gson()

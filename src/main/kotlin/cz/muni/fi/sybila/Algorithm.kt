@@ -2,6 +2,7 @@ package cz.muni.fi.sybila
 
 import com.github.sybila.*
 import com.github.sybila.checker.*
+import com.github.sybila.checker.map.mutable.HashStateMap
 import com.github.sybila.checker.operator.OrOperator
 import com.github.sybila.checker.operator.TrueOperator
 import com.github.sybila.checker.partition.asSingletonPartition
@@ -24,6 +25,7 @@ internal class Algorithm<T: Any>(
 
     private val executor = Executors.newFixedThreadPool(config.parallelism)
     private val pending = ArrayList<Future<*>>()
+    private val sinks = HashStateMap(allStates.ff)
 
     fun computeComponents(): StateMap<T> {
         startAction(initialUniverse ?: TrueOperator(allStates.asSingletonPartition()).compute())
@@ -43,6 +45,7 @@ internal class Algorithm<T: Any>(
         val transitions = states.map { source -> source to allStates.run { source.successors(true).asSequence().map { it.target }.toList() } }.toMap()
         val g = Graph(states, transitions)
         println("Is bipartite: ${g.isBipartite()}")*/
+        println("Sinks: ${sinks.entries().asSequence().toList()}")
         return components.fold<StateMap<T>, Operator<T>>(components[0].asOperator()) { a, b -> OrOperator(a, b.asOperator(), channel) }.compute()
         //val result = store.getComponentMapping(count).mapIndexed { i, map -> "${i+1} attractor(s)" to listOf(map) }.toMap()
 
@@ -68,6 +71,15 @@ internal class Algorithm<T: Any>(
                 println("Forward not backward: ${forwardNotBackward.entries().asSequence().toList()}")
                 println("Component: ${forward.compute().entries().asSequence().toList()} $reachableComponentParams ${reachableComponentParams.not()}")*/
                 println("Component: ${forward.compute().entries().asSequence().map { it.first to (it.second and reachableComponentParams.not()) }.filter { it.second.isSat() }.toList()}")
+                // Detect sink states and put them aside
+                forward.compute().entries().forEach { (s, p) ->
+                    //println("succ $s: ${s.successors(true).asSequence().map { it.target to it.bound.not() }.toList()}")
+                    val isSink = s.successors(true).asSequence().fold(p) { sinkParams, next ->
+                        sinkParams and (if (next.target == s) tt else next.bound.not())
+                    }
+                    //println("Sink: $s for $isSink")
+                    if (isSink.isSat()) sinks.setOrUnion(s, isSink)
+                }
                 store.push(forward.compute(), reachableComponentParams.not())
 
                 if (reachableComponentParams.isSat()) {
@@ -111,53 +123,3 @@ internal class Algorithm<T: Any>(
         executor.shutdown()
     }
 }
-/*
-class ExplicitOdeFragment<T: Any>(
-        private val solver: Solver<T>,
-        override val stateCount: Int,
-        private val pivotFactory: (ExplicitOdeFragment<T>) -> PivotChooser<T>,
-        private val successors: Array<List<Transition<T>>>,
-        private val predecessors: Array<List<Transition<T>>>
-) : Model<T>, Solver<T> by solver, IntervalSolver<T> {
-
-    val pivot: PivotChooser<T> = pivotFactory(this)
-
-    override fun Formula.Atom.Float.eval(): StateMap<T> = error("This type of model does not have atoms.")
-
-    override fun Formula.Atom.Transition.eval(): StateMap<T> = error("This type of model does not have atoms.")
-
-    override fun Int.predecessors(timeFlow: Boolean): Iterator<Transition<T>> = this.successors(!timeFlow)
-
-    override fun Int.successors(timeFlow: Boolean): Iterator<Transition<T>> {
-        val map = if (timeFlow) successors else predecessors
-        return map[this].iterator()
-    }
-
-    private fun Array<List<Transition<T>>>.restrictTo(universe: StateMap<T>): Array<List<Transition<T>>> = Array(stateCount) { s ->
-        this[s].mapNotNull { t ->
-            val newBound = t.bound and universe[s] and universe[t.target]
-            newBound.takeIf { it.isSat() }?.let { Transition(t.target, t.direction, it) }
-        }
-    }
-
-    override fun T.asIntervals(): Array<Array<DoubleArray>> {
-        if (solver !is IntervalSolver<*>) error("Invalid solver! Requires IntervalSolver.")
-        @Suppress("UNCHECKED_CAST")
-        (solver as IntervalSolver<T>).run {
-            return this@asIntervals.asIntervals()
-        }
-    }
-
-    fun restrictTo(universe: StateMap<T>): ExplicitOdeFragment<T> = ExplicitOdeFragment(
-            solver, stateCount, pivotFactory,
-            successors = successors.restrictTo(universe),
-            predecessors = predecessors.restrictTo(universe)
-    )
-
-    fun T.volume(): Double {
-        @Suppress("UNCHECKED_CAST")
-        val rect = this as MutableSet<Rectangle>
-        return rect.fold(0.0) { a, b ->
-            a + b.volume()
-        }
-    }*/

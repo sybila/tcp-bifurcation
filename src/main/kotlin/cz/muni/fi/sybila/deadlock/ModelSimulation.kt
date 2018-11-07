@@ -2,7 +2,7 @@ package cz.muni.fi.sybila.deadlock
 
 import kotlin.math.min
 
-private val S = 1024 * 24
+private val S = 1024 * 16
 private val R = 1024 * 24
 private val BLOCK = 1024
 private val MSS = 9204
@@ -11,7 +11,8 @@ private data class State(
         val toSend: Int,
         val dataChannel: List<Int>,
         val toAck: Int,
-        val ackChannel: List<Int>
+        val ackChannel: List<Int>,
+        val randomAck: Boolean = false
 ) {
 
     val dataSize: Int = dataChannel.sum()
@@ -65,15 +66,19 @@ private fun State.next(): Set<State> {
         result.add(copy(ackChannel = ackChannel.drop(1)))
     }
 
+    if (!randomAck && toAck > 0) {
+        result.add(copy(toAck = 0, ackChannel = ackChannel + toAck, randomAck = true))
+    }
+
     return result
 }
 
 fun main(args: Array<String>) {
     var states = setOf(State(0, emptyList(), 0, emptyList()))
     repeat(1000) {
-        //if (states.isNotEmpty()) println("$it: $states")
+        if (states.isNotEmpty()) println("$it: $states")
         states = states.flatMap { s -> s.next().also {
-            if (it.isEmpty()) println("Deadlock $s")
+            if (it.isEmpty()) error("Deadlock $s")
         } }.toSet()
     }
 }

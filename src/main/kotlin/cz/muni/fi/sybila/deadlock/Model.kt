@@ -96,7 +96,7 @@ class TCPTransitionSystem(
 
     fun TCPState.sendPartialPacket(): Pair<TCPState, IParams>? {
         if (toSend == 0 || sentData + toAck + ackedData > 0) return null    // no data or outstanding data present
-        
+
     }
 
 

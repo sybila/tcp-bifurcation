@@ -10,174 +10,58 @@ import com.github.sybila.huctl.Formula
 import com.github.sybila.ode.generator.IntervalSolver
 import com.github.sybila.ode.generator.NodeEncoder
 import com.github.sybila.ode.model.OdeModel
-import com.github.sybila.ode.model.Summand
 import com.google.gson.Gson
-import cz.muni.fi.sybila.Result
-import cz.muni.fi.sybila.ResultSet
 import cz.muni.fi.sybila.SolverModel
-import cz.muni.fi.sybila.State
-import cz.muni.fi.sybila.makeExplicitInt
-import cz.muni.fi.sybila.runAnalysis
+import cz.muni.fi.sybila.output.Result
+import cz.muni.fi.sybila.output.ResultSet
+import cz.muni.fi.sybila.output.State
+import cz.muni.fi.sybila.runAnalysisWithSinks
 import java.io.File
-import kotlin.math.max
-import kotlin.math.min
 
 private val BLOCK = 1024
 private val MSS = 9204
-private val rMult = 32
+private val rMult = 4
 private val R = 1024 * rMult
 
-private data class S(
-        val toSend: Int,
-        val dataChannel: List<Int>,
-        val toAck: Int,
-        val ackChannel: List<Int>
-) {
-
-    val dataSize: Int = dataChannel.sum()
-    val ackSize: Int = ackChannel.sum()
-
-}
-
 private class ModelSender(
-        val senderBounds: Pair<Int, Int> = 16 to 16,
-        solver: IntRectSolver = IntRectSolver(IntRect(intArrayOf(senderBounds.first, senderBounds.second)))
+        val senderBounds: Pair<Int, Int> = 4 to 4,
+        solver: IntRectSolver = IntRectSolver(IntRect(intArrayOf(1, 64, 1, 64)))
 ) : SolverModel<IParams>, IntervalSolver<IParams> by solver, Solver<IParams> by solver {
 
-    val states = ArrayList<S>()
-    val stateMap = HashMap<S, IParams>()
-    val successor = HashMap<S, List<S>>()
-    val predecessor = HashMap<S, List<S>>()
-    private val transitions = HashMap<Pair<S, S>, IParams>()
+    private val model = TCPTransitionSystem()
+
+    val states = ArrayList<TCPState>()
+    val stateMap = HashMap<TCPState, IParams>()
+    val successor = HashMap<TCPState, List<TCPState>>()
+    val predecessor = HashMap<TCPState, List<TCPState>>()
+    private val transitions = HashMap<Pair<TCPState, TCPState>, IParams>()
 
     init {
         println("Computing state space!")
-        val init = S(0, emptyList(), 0, emptyList())
-        val states = HashSet<S>()
+        val init = TCPState(0, emptyList(), 0, emptyList())
+        val states = HashSet<TCPState>()
         states.add(init)
         var frontier = setOf(init)
-        stateMap[init] = tt
+        val s = 4
+        val r = 4
+        stateMap[init] = iRectOf(1,s,1,r).asParams()
         while (frontier.isNotEmpty()) {
             println("States: ${states.size}")
             states.addAll(frontier)
-            val newFrontier = HashSet<S>()
+            val newFrontier = HashSet<TCPState>()
             frontier.forEach { source ->
                 val sourceParams = stateMap[source]!!
-                val print = source == S(toSend=32768, dataChannel= emptyList(), toAck=0, ackChannel= emptyList())
-                source.run {
-                    if (ackSize > 0) {
-                        // receive ack packet
-                        val dest = source.copy(ackChannel = ackChannel.drop(1))
-                        if (stateMap.putOrUnion(dest, sourceParams)) {
-                            states.add(dest); newFrontier.add(dest)
+                val targets = model.successors(source)
+                val print = source == TCPState(toSend=1024, sent= emptyList(), toAck=0, acked= emptyList())
+                targets.forEach { (target, p) ->
+                    val transitionParams = sourceParams and p
+                    if (transitionParams.isSat()) {
+                        if (stateMap.putOrUnion(target, transitionParams)) {
+                            states.add(target); newFrontier.add(target)
                         }
-                        transitions.putOrUnion(source to dest, sourceParams)
-                        registerTransition(source, dest)
+                        transitions.putOrUnion(source to target, transitionParams)
+                        registerTransition(source, target)
                     }
-
-                    if (dataSize > 0) {
-                        // Receive packet if available (due to window restrictions, toAck should never overflow)
-                        val packet = dataChannel[0]
-                        if (toAck + packet >= 0.35 * R || toAck + packet >= 2 * MSS) {
-                            // Receive and acknowledge
-                            val dest = copy(dataChannel = dataChannel.drop(1), toAck = 0, ackChannel = ackChannel + (toAck + packet))
-                            if (stateMap.putOrUnion(dest, sourceParams)) {
-                                states.add(dest); newFrontier.add(dest)
-                            }
-                            transitions.putOrUnion(source to dest, sourceParams)
-                            registerTransition(source, dest)
-                        } else {
-                            // Just receive
-                            val dest = copy(dataChannel = dataChannel.drop(1), toAck = toAck + packet)
-                            if (stateMap.putOrUnion(dest, sourceParams)) {
-                                states.add(dest); newFrontier.add(dest)
-                            }
-                            transitions.putOrUnion(source to dest, sourceParams)
-                            registerTransition(source, dest)
-                        }
-                    }
-
-                    if (toSend >= MSS) {
-                        // sendWindow >= MSS
-                        // min(R, S) - dataSize - toAck - ackSize >= MSS
-
-                        // Case 1: R >= S
-                        // S - dataSize - toAck - ackSize >= MSS
-                        // S >= MSS + dataSize + toAck + ackSize
-                        val upperBound = min(senderBounds.second, rMult)
-                        val lowerBound = max(senderBounds.first, Math.ceil((MSS + dataSize + toAck + ackSize) / BLOCK.toDouble()).toInt())
-                        if (print) println("[$lowerBound, $upperBound]")
-                        if (lowerBound <= upperBound) {
-                            val dest = copy(toSend = toSend - MSS, dataChannel = dataChannel + MSS)
-                            val transitionParams = sourceParams and iRectOf(lowerBound, upperBound).asParams()
-                            if (transitionParams.isSat()) {
-                                if (stateMap.putOrUnion(dest, transitionParams)) {
-                                    states.add(dest); newFrontier.add(dest)
-                                }
-                                transitions.putOrUnion(source to dest, transitionParams)
-                                registerTransition(source, dest)
-                            }
-                        }
-
-                        // Case 2: R < S
-                        // R - dataSize - toAck - ackSize >= MSS
-                        if (rMult < senderBounds.second && R - dataSize - toAck - ackSize >= MSS) {
-                            val dest = copy(toSend = toSend - MSS, dataChannel = dataChannel + MSS)
-                            // rMult+1 <= senderBounds.second -> look up!
-                            val transitionParams = sourceParams and iRectOf(rMult+1, senderBounds.second).asParams()
-                            if (transitionParams.isSat()) {
-                                if (stateMap.putOrUnion(dest, transitionParams)) {
-                                    states.add(dest); newFrontier.add(dest)
-                                }
-                                transitions.putOrUnion(source to dest, transitionParams)
-                                registerTransition(source, dest)
-                            }
-                        }
-                    }
-
-                    if (toSend > 0 &&/*toSend in 1..(MSS - 1) && */(dataSize + ackSize + toAck) == 0) {
-                        // Send incomplete packet
-                        // min(R, S) - dataSize - toAck - ackSize > 0
-
-                        // This one we have to do extra, because the packet size depends on S
-                        for (S in senderBounds.first..senderBounds.second) {
-                            val window = min(R, S * BLOCK) - dataSize - toAck - ackSize
-                            //if (print && S == 8) println("Win: $window")
-                            if (window > 1) {
-                                val packet = min(window, toSend)
-                                if (packet < MSS) {
-                                    //if (print && S == 8) println("Packet: $packet")
-                                    val dest = copy(toSend = toSend - packet, dataChannel = dataChannel + packet)
-                                    val transitionParams = sourceParams and iRectOf(S, S).asParams()
-                                    if (transitionParams.isSat()) {
-                                        if (stateMap.putOrUnion(dest, transitionParams)) {
-                                            states.add(dest); newFrontier.add(dest)
-                                        }
-                                        transitions.putOrUnion(source to dest, transitionParams)
-                                        registerTransition(source, dest)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Copy
-                    for (S in senderBounds.first..senderBounds.second) {
-                        val free = (S * BLOCK) - toSend - dataSize - toAck - ackSize
-                        if (free >= BLOCK) {
-                            val toCopy = min(4, free / BLOCK)
-                            val dest = copy(toSend = toSend + toCopy * BLOCK)
-                            val transitionParams = sourceParams and iRectOf(S, S).asParams()
-                            if (transitionParams.isSat()) {
-                                if (stateMap.putOrUnion(dest, transitionParams)) {
-                                    states.add(dest); newFrontier.add(dest)
-                                }
-                                transitions.putOrUnion(source to dest, transitionParams)
-                                registerTransition(source, dest)
-                            }
-                        }
-                    }
-
                 }
             }
             frontier = newFrontier
@@ -192,14 +76,14 @@ private class ModelSender(
         if (current == null) {
             put(key, value)
             return true
-        } else if (current.andNot(value)) {
+        } else if (value.andNot(current)) {
             put(key, current or value)
             return true
         }
         return false
     }
 
-    private fun registerTransition(from: S, to: S) {
+    private fun registerTransition(from: TCPState, to: TCPState) {
         val succ = successor.getOrDefault(from, emptyList())
         if (to !in succ) successor[from] = succ + to
         val pred = predecessor.getOrDefault(to, emptyList())
@@ -207,12 +91,12 @@ private class ModelSender(
     }
 
     init {
-        states.forEachIndexed { index, s ->
+        /*states.forEachIndexed { index, s ->
             println("$index: $s")
         }
         for ((t, p) in transitions) {
-            println("${stateToIndex[t.first]} -> ${stateToIndex[t.second]} $p")
-        }
+            println("${stateToIndex[t.first]}: ${t.first} -> ${stateToIndex[t.second]}: ${t.second} $p")
+        }*/
     }
 
     override val stateCount: Int = states.size
@@ -279,17 +163,18 @@ private class ModelSender(
 fun main(args: Array<String>) {
     val fakeConfig = Config()
     val system = ModelSender()
-    /*IntRectSolver(iRectOf(24, 24)).run {
-        val a = iRectOf(24, 24).asParams()
-        val b = iRectOf(17, 24).asParams()
-        println("And: ${a and b}")
-    }*/
 
-    val r = system.makeExplicitInt(fakeConfig).runAnalysis(fakeConfig, HashStateMap(system.ff, system.stateMap.map {
+    val (full, r) = system.makeExplicitInt(fakeConfig).runAnalysisWithSinks(fakeConfig, HashStateMap(system.ff, system.stateMap.map {
         system.stateToIndex[it.key]!! to it.value
     }.toMap()))
-    /*for ((s, p) in r.entries()) {
-        println("${system.states[s]} -> $p")
+    println("Component: ${r.entries().asSequence().count()}")
+    /*val one = iRectOf(4,4,1,1).asParams()
+    for ((s, p) in r.entries()) {
+        system.run {
+            //if ((p and one).isSat()) {
+                println("${system.states[s]} -> $p")
+            //}
+        }
     }*/
 
     val pValues = r.entries().asSequence().map { it.second }.toSet().toList()
@@ -310,17 +195,17 @@ fun main(args: Array<String>) {
 
     val rs = ResultSet(
             variables = listOf("to_ack", "to_send"),
-            parameters = listOf("s_buf"),
+            parameters = listOf("s_buf", "r_buf"),
             thresholds = listOf(ackThresholds, sendThresholds),
-            parameterBounds = listOf(doubleArrayOf(system.senderBounds.first.toDouble(), system.senderBounds.second.toDouble())),
+            parameterBounds = listOf(doubleArrayOf(1.0, 64.0), doubleArrayOf(1.0, 64.0)),
             states = r.entries().asSequence().map { j ->
                 val s = system.states[j.first]
                 // compute state id:
                 val iAck = ackThresholds.indexOf((s.toAck - 100).toDouble())
                 val iSend = sendThresholds.indexOf((s.toSend - 100).toDouble())
                 State(encoder.encodeNode(intArrayOf(iAck, iSend)).toLong(), arrayOf(
-                        doubleArrayOf(ackThresholds[iAck], ackThresholds[iAck+1]),
-                        doubleArrayOf(sendThresholds[iSend], sendThresholds[iSend+1])
+                        doubleArrayOf(ackThresholds[iAck], ackThresholds[iAck + 1]),
+                        doubleArrayOf(sendThresholds[iSend], sendThresholds[iSend + 1])
                 ))
             }.toList(),
             type = "rectangular",
@@ -340,3 +225,4 @@ fun main(args: Array<String>) {
     val json = Gson()
     File("/Users/daemontus/Downloads/TCP_sender.json").writeText(json.toJson(rs))
 }
+

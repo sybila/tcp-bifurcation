@@ -223,12 +223,20 @@ fun SolverModel<MutableSet<IntRect>>.makeExplicitInt(
     return ExplicitOdeFragment(this, stateCount, pivotChooser, successors, predecessors)
 }
 
-
 fun <T: Any> ExplicitOdeFragment<T>.runAnalysis(config: Config, initialUniverse: StateMap<T>? = null): StateMap<T> {
     val algorithm = Algorithm(config, this, initialUniverse)
 
     val start = System.currentTimeMillis()
     return algorithm.use {
         it.computeComponents().also { config.logStream?.println("Search elapsed: ${System.currentTimeMillis() - start}ms") }
+    }
+}
+
+fun <T: Any> ExplicitOdeFragment<T>.runAnalysisWithSinks(config: Config, initialUniverse: StateMap<T>? = null): Pair<StateMap<T>, StateMap<T>> {
+    val algorithm = Algorithm(config, this, initialUniverse)
+
+    val start = System.currentTimeMillis()
+    return algorithm.use {
+        it.computeComponents().also { config.logStream?.println("Search elapsed: ${System.currentTimeMillis() - start}ms") } to it.sinks
     }
 }

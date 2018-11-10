@@ -144,7 +144,7 @@ class IntRect(
 
     fun asIntervals(): Array<DoubleArray> {
         return Array(coordinates.size / 2) { i ->
-            doubleArrayOf(coordinates[2*i]-0.1, coordinates[2*i + 1]+0.1)
+            doubleArrayOf(coordinates[2*i].toDouble(), coordinates[2*i + 1]+1.0)
         }
     }
 

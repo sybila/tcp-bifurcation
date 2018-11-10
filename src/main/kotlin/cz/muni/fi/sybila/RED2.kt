@@ -12,6 +12,7 @@ import com.github.sybila.ode.generator.rect.RectangleSolver
 import com.github.sybila.ode.generator.rect.rectangleOf
 import com.github.sybila.ode.model.OdeModel
 import com.google.gson.Gson
+import cz.muni.fi.sybila.output.exportResults
 import cz.muni.fi.sybila.red.Interval
 import cz.muni.fi.sybila.red.asI
 import java.io.File

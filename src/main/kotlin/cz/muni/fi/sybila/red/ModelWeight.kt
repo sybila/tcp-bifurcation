@@ -6,7 +6,7 @@ import com.github.sybila.ode.generator.rect.rectangleOf
 import com.github.sybila.ode.model.OdeModel
 import com.google.gson.Gson
 import cz.muni.fi.sybila.RParams
-import cz.muni.fi.sybila.exportResults
+import cz.muni.fi.sybila.output.exportResults
 import cz.muni.fi.sybila.makeExplicit
 import cz.muni.fi.sybila.runAnalysis
 import java.io.File

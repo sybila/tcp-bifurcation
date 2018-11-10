@@ -32,20 +32,34 @@ class TCPTransitionSystem(
      */
         val s: Pair<Int, Int> = 1 to 64,
         val r: Pair<Int, Int> = 1 to 64,
+        // Size of one packet of data (minus header)
+        // ATM network: 9204, Ethernet network: 1460
+        val MSS: Int = 9204,
+        // Size of one application data block
+        val BLOCK: Int = 1024,
         solver: Solver<IParams> = IntRectSolver(iRectOf(s.first, s.second, r.first, r.second))
 ) : Solver<IParams> by solver {
 
-    // Size of one application data block
-    val BLOCK = 1024
-    // Size of one packet of data (minus header)
-    // ATM network: 9204, Ethernet network: 1460
-    val MSS = 9204
-
     val fullRect = iRectOf(s.first, s.second, r.first, r.second)
 
+    private val cache = HashMap<TCPState, List<Pair<TCPState, IParams>>>()
     fun successors(source: TCPState): List<Pair<TCPState, IParams>> {
-        val receiveAck = source.processAck()
-        return emptyList()
+        //if (source in cache) return cache[source]!!
+        val receiveNoAck = source.receiveNoAck()
+        val receiveWithAck = source.receiveWithAck()
+        val processAck = source.processAck()
+        val sendFullPacket = source.sendFullPacket()
+        val sendPartialPacket = source.sendPartialPacket()
+        val copyData = source.copyData((sendFullPacket?.second ?: ff) or (sendPartialPacket.fold(ff) { a, b -> a or b.second }))
+        val result = ArrayList<Pair<TCPState, IParams>>()
+        receiveNoAck?.let { result.add(it) }
+        receiveWithAck?.let { result.add(it) }
+        processAck?.let { result.add(it) }
+        sendFullPacket?.let { result.add(it) }
+        result.addAll(sendPartialPacket)
+        result.addAll(copyData)
+        //cache[source] == result
+        return result
     }
 
     fun TCPState.processAck(): Pair<TCPState, IParams>? {
@@ -94,9 +108,55 @@ class TCPTransitionSystem(
         return copy(toSend = toSend - MSS, sent = sent + MSS) to params
     }
 
-    fun TCPState.sendPartialPacket(): Pair<TCPState, IParams>? {
-        if (toSend == 0 || sentData + toAck + ackedData > 0) return null    // no data or outstanding data present
+    fun TCPState.sendPartialPacket(): List<Pair<TCPState, IParams>> {
+        if (toSend == 0 || sentData + toAck + ackedData > 0) return emptyList()    // no data or outstanding data present
+        // We can't send a partial packet if full packet is available, even if there are no outstanding data.
+        // Furthermore, the size of the packet is limited by window size which depends on parameters.
+        // Thankfully, we know that there are no outstanding data, hence window = min(R,S).
+        val results = ArrayList<Pair<TCPState, IParams>>()
 
+        // First, we consider when we can send all data - i.e. when window = min(R,S) >= toSend.
+        val maxPacket = min(MSS, toSend)
+        val windowSendAll = if (maxPacket % BLOCK == 0) maxPacket / BLOCK else (maxPacket / BLOCK + 1)
+        if (toSend < MSS) { // However, only if toSend < MSS, since otherwise we can send a full MSS packet.
+            val params = iRectOf(max(s.first, windowSendAll), s.second, max(r.first, windowSendAll), r.second).asParams()
+            results.add(copy(toSend = 0, sent = sent + toSend) to params)
+        }
+
+        // Second, we have to consider situations when we are limited by the window size -> min(R,S) < toSend
+        for (window in 1 until windowSendAll) { // consider window sizes where we can't send all data
+            // We have window * BLOCK < toSend because (windowSendAll-1) * BLOCK < toSend.
+            // Furthermore, for each window size, we have that packetSize = window*BLOCK and it can be sent
+            // only if min(R,S) = window * BLOCK
+            if (window < s.first || window < r.first) continue  // such small window is not allowed
+            val params = mutableSetOf(
+                    // S = window, R >= window                 S >= window, R = window
+                    iRectOf(window, window, window, r.second), iRectOf(window, s.second, window, window)
+            )
+            val packet = window * BLOCK
+            results.add(copy(toSend = toSend - packet, sent = sent + packet) to params)
+        }
+
+        return results
+    }
+
+    fun TCPState.copyData(sentParams: IParams): List<Pair<TCPState, IParams>> {
+        val results = ArrayList<Pair<TCPState, IParams>>()
+        var remainingParams = sentParams.not()
+        for (toCopy in 4 downTo 1) {  // number of blocks which can be copied
+            // BLOCK * toCopy + toSend + sentData + toAck + ackedData < S
+            val bufferAfterCopy = toCopy * BLOCK + toSend + sentData + toAck + ackedData
+            val threshold = if (bufferAfterCopy % BLOCK == 0) bufferAfterCopy / BLOCK else (bufferAfterCopy / BLOCK + 1)
+            if (threshold <= s.second) {
+                val params = remainingParams and iRectOf(threshold, s.second, r.first, r.second).asParams()
+                remainingParams = remainingParams and params.not()
+                if (params.isSat()) {
+                    results.add(copy(toSend = toSend + toCopy * BLOCK) to params)
+                }
+                if (remainingParams.isNotSat()) break
+            }
+        }
+        return results
     }
 
 

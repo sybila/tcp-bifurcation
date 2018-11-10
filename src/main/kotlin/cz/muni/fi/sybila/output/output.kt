@@ -1,4 +1,4 @@
-package cz.muni.fi.sybila
+package cz.muni.fi.sybila.output
 
 import com.github.sybila.checker.StateMap
 import com.github.sybila.ode.generator.IntervalSolver

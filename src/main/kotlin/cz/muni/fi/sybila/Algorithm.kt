@@ -25,7 +25,7 @@ internal class Algorithm<T: Any>(
 
     private val executor = Executors.newFixedThreadPool(config.parallelism)
     private val pending = ArrayList<Future<*>>()
-    private val sinks = HashStateMap(allStates.ff)
+    val sinks = HashStateMap(allStates.ff)
 
     fun computeComponents(): StateMap<T> {
         startAction(initialUniverse ?: TrueOperator(allStates.asSingletonPartition()).compute())
@@ -70,7 +70,7 @@ internal class Algorithm<T: Any>(
                 println("Backward: ${backward.compute().entries().asSequence().toList()}")
                 println("Forward not backward: ${forwardNotBackward.entries().asSequence().toList()}")
                 println("Component: ${forward.compute().entries().asSequence().toList()} $reachableComponentParams ${reachableComponentParams.not()}")*/
-                println("Component: ${forward.compute().entries().asSequence().map { it.first to (it.second and reachableComponentParams.not()) }.filter { it.second.isSat() }.toList()}")
+                //println("Component: ${forward.compute().entries().asSequence().map { it.first to (it.second and reachableComponentParams.not()) }.filter { it.second.isSat() }.toList()}")
                 // Detect sink states and put them aside
                 forward.compute().entries().forEach { (s, p) ->
                     //println("succ $s: ${s.successors(true).asSequence().map { it.target to it.bound.not() }.toList()}")

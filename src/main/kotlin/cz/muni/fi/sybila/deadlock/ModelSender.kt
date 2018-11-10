@@ -24,8 +24,7 @@ private val rMult = 4
 private val R = 1024 * rMult
 
 private class ModelSender(
-        val senderBounds: Pair<Int, Int> = 4 to 4,
-        solver: IntRectSolver = IntRectSolver(IntRect(intArrayOf(1, 64, 1, 64)))
+        solver: IntRectSolver = IntRectSolver(IntRect(intArrayOf(1, 16, 1, 16)))
 ) : SolverModel<IParams>, IntervalSolver<IParams> by solver, Solver<IParams> by solver {
 
     private val model = TCPTransitionSystem()
@@ -43,7 +42,7 @@ private class ModelSender(
         states.add(init)
         var frontier = setOf(init)
         val s = 4
-        val r = 4
+        val r = 6
         stateMap[init] = iRectOf(1,s,1,r).asParams()
         while (frontier.isNotEmpty()) {
             println("States: ${states.size}")
@@ -161,7 +160,7 @@ private class ModelSender(
 }
 
 fun main(args: Array<String>) {
-    val fakeConfig = Config()
+    val fakeConfig = Config(disableHeuristic = true)
     val system = ModelSender()
 
     val (full, r) = system.makeExplicitInt(fakeConfig).runAnalysisWithSinks(fakeConfig, HashStateMap(system.ff, system.stateMap.map {
@@ -197,7 +196,7 @@ fun main(args: Array<String>) {
             variables = listOf("to_ack", "to_send"),
             parameters = listOf("s_buf", "r_buf"),
             thresholds = listOf(ackThresholds, sendThresholds),
-            parameterBounds = listOf(doubleArrayOf(1.0, 64.0), doubleArrayOf(1.0, 64.0)),
+            parameterBounds = listOf(doubleArrayOf(1.0, 16.0), doubleArrayOf(1.0, 16.0)),
             states = r.entries().asSequence().map { j ->
                 val s = system.states[j.first]
                 // compute state id:

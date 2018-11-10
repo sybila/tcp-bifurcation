@@ -2,8 +2,8 @@ package cz.muni.fi.sybila.deadlock
 
 import kotlin.math.min
 
-private val S = 1024 * 9
-private val R = 1024 * 3
+private val S = 1024 * 24
+private val R = 1024 * 48
 private val BLOCK = 1024
 private val MSS = 9204
 
@@ -20,7 +20,7 @@ private data class State(
 
     val freeSend: Int = S - toSend - dataSize - toAck - ackSize
 
-    val sendWindow: Int = S/*min(R, S)*/ - dataSize - toAck - ackSize
+    val sendWindow: Int = min(R, S) - dataSize - toAck - ackSize
 
     val outstanding: Int = dataSize + ackSize + toAck
 
@@ -66,9 +66,9 @@ private fun State.next(): Set<State> {
         result.add(copy(ackChannel = ackChannel.drop(1)))
     }
 
-    /*if (!randomAck && toAck > 0) {
+    if (!randomAck && toAck > 0) {
         result.add(copy(toAck = 0, ackChannel = ackChannel + toAck, randomAck = true))
-    }*/
+    }
 
     return result
 }

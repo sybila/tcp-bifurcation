@@ -13,7 +13,8 @@ data class TCPState(
         val toSend: Int,    // bytes which have been copied from user, but haven't been sent yet
         val sent: List<Int>,// bytes which have been sent and are in transit
         val toAck: Int,     // bytes which have been received, but acknowledgement haven't been sent yet
-        val acked: List<Int>// bytes which have been acknowledged by the receiver, but acknowledgement haven't been received yet
+        val acked: List<Int>,// bytes which have been acknowledged by the receiver, but acknowledgement haven't been received yet
+        val canRandomAck: Boolean = true
 ) {
 
     val sentData: Int
@@ -28,10 +29,10 @@ class TCPTransitionSystem(
         /*
         s and r are parameters which give the size of the send/receive buffer in BLOCK multiples
 
-        We use R and S to refer to actual buffer size (i.e. R = r * BLOCK)
+        We use R and S to refer to actual buffer size (i.e. R = r * SCALE * BLOCK)
      */
-        val s: Pair<Int, Int> = 1 to 64,
-        val r: Pair<Int, Int> = 1 to 64,
+        val s: Pair<Int, Int> = 1 to 16,
+        val r: Pair<Int, Int> = 1 to 16,
         // Size of one packet of data (minus header)
         // ATM network: 9204, Ethernet network: 1460
         val MSS: Int = 9204,
@@ -40,11 +41,15 @@ class TCPTransitionSystem(
         solver: Solver<IParams> = IntRectSolver(iRectOf(s.first, s.second, r.first, r.second))
 ) : Solver<IParams> by solver {
 
+    // A scale factor is used to skip some parameter values
+    private val SCALE = 8
+
     val fullRect = iRectOf(s.first, s.second, r.first, r.second)
 
     private val cache = HashMap<TCPState, List<Pair<TCPState, IParams>>>()
     fun successors(source: TCPState): List<Pair<TCPState, IParams>> {
         //if (source in cache) return cache[source]!!
+        val randomAck = source.sendRandomAck()
         val receiveNoAck = source.receiveNoAck()
         val receiveWithAck = source.receiveWithAck()
         val processAck = source.processAck()
@@ -52,6 +57,7 @@ class TCPTransitionSystem(
         val sendPartialPacket = source.sendPartialPacket()
         val copyData = source.copyData((sendFullPacket?.second ?: ff) or (sendPartialPacket.fold(ff) { a, b -> a or b.second }))
         val result = ArrayList<Pair<TCPState, IParams>>()
+        randomAck?.let { result.add(randomAck) }
         receiveNoAck?.let { result.add(it) }
         receiveWithAck?.let { result.add(it) }
         processAck?.let { result.add(it) }
@@ -74,7 +80,7 @@ class TCPTransitionSystem(
         if (windowSlide >= 2*MSS) return null   // ack is always sent
         // windowSlide < 0.35 * R
         // windowSlide / 0.35 < R
-        val lowerBound = Math.ceil(windowSlide / 0.35 / BLOCK).toInt()  // ceil is important, floor might be off by one
+        val lowerBound = Math.ceil(windowSlide / 0.35 / BLOCK / SCALE).toInt()  // ceil is important, floor might be off by one
         val newState = copy(sent = sent.drop(1), toAck = toAck + packet)
         return if (lowerBound > r.second) null else {
             newState to iRectOf(s.first, s.second, max(r.first, lowerBound), r.second).asParams()
@@ -90,7 +96,7 @@ class TCPTransitionSystem(
         if (windowSlide >= 2*MSS) return (newState to fullRect.asParams())  // ack is always sent, regardless of buffer size
         // windowSlide >= 0.35 * R
         // windowSlide / 0.35 >= R
-        val upperBound = Math.floor(windowSlide / 0.35 / BLOCK).toInt() // floor for conceptual symmetry with ceil up
+        val upperBound = Math.floor(windowSlide / 0.35 / BLOCK / SCALE).toInt() // floor for conceptual symmetry with ceil up
         return if (upperBound < r.first) null else {
             newState to iRectOf(s.first, s.second, r.first, min(r.second, upperBound)).asParams()
         }
@@ -101,7 +107,7 @@ class TCPTransitionSystem(
         // Now, we have to ensure that send window is big enough to contain the packet
         // window = min(R,S) - sentData - toAck - ackedData >= MSS
         // min(R,S) >= MSS + sentData + toAck + ackedData
-        val threshold = Math.ceil((MSS + sentData + toAck + ackedData) / BLOCK.toDouble()).toInt()
+        val threshold = Math.ceil((MSS + sentData + toAck + ackedData) / BLOCK.toDouble() / SCALE).toInt()
         // minimum is bigger only if BOTH parameters are bigger, so we restrict both parameters
         if (threshold > s.second || threshold > r.second) return null   // buffers are too small to send a full packet
         val params = iRectOf(max(s.first, threshold), s.second, max(r.first, threshold), r.second).asParams()
@@ -117,7 +123,7 @@ class TCPTransitionSystem(
 
         // First, we consider when we can send all data - i.e. when window = min(R,S) >= toSend.
         val maxPacket = min(MSS, toSend)
-        val windowSendAll = if (maxPacket % BLOCK == 0) maxPacket / BLOCK else (maxPacket / BLOCK + 1)
+        val windowSendAll = if (maxPacket % (BLOCK * SCALE) == 0) maxPacket / (BLOCK * SCALE) else (maxPacket / (BLOCK * SCALE) + 1)
         if (toSend < MSS) { // However, only if toSend < MSS, since otherwise we can send a full MSS packet.
             val params = iRectOf(max(s.first, windowSendAll), s.second, max(r.first, windowSendAll), r.second).asParams()
             results.add(copy(toSend = 0, sent = sent + toSend) to params)
@@ -133,7 +139,7 @@ class TCPTransitionSystem(
                     // S = window, R >= window                 S >= window, R = window
                     iRectOf(window, window, window, r.second), iRectOf(window, s.second, window, window)
             )
-            val packet = window * BLOCK
+            val packet = window * BLOCK * SCALE
             results.add(copy(toSend = toSend - packet, sent = sent + packet) to params)
         }
 
@@ -146,7 +152,7 @@ class TCPTransitionSystem(
         for (toCopy in 4 downTo 1) {  // number of blocks which can be copied
             // BLOCK * toCopy + toSend + sentData + toAck + ackedData < S
             val bufferAfterCopy = toCopy * BLOCK + toSend + sentData + toAck + ackedData
-            val threshold = if (bufferAfterCopy % BLOCK == 0) bufferAfterCopy / BLOCK else (bufferAfterCopy / BLOCK + 1)
+            val threshold = if (bufferAfterCopy % (BLOCK * SCALE) == 0) bufferAfterCopy / (BLOCK * SCALE) else (bufferAfterCopy / (BLOCK * SCALE) + 1)
             if (threshold <= s.second) {
                 val params = remainingParams and iRectOf(threshold, s.second, r.first, r.second).asParams()
                 remainingParams = remainingParams and params.not()
@@ -159,6 +165,10 @@ class TCPTransitionSystem(
         return results
     }
 
+    fun TCPState.sendRandomAck(): Pair<TCPState, IParams>? {
+        if (toAck == 0 || !canRandomAck) return null
+        return copy(toAck = 0, acked = acked + toAck, canRandomAck = false) to tt
+    }
 
 
 }

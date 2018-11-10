@@ -55,6 +55,13 @@ internal class Algorithm<T: Any>(
     private fun runAction(universe: StateMap<T>) {
         allStates.restrictTo(universe).run {
             val universeSize = universe.entries().asSequence().count()
+            if (universeSize == 1) {
+                // this is obviously a terminal component, don't do all that other stuff...
+                val (s, p) = universe.entries().next()
+                store.push(universe, p)
+                sinks.setOrUnion(s, p)
+                return@run
+            }
             config.logStream?.println("Universe size: $universeSize")
             val channel = this.asSingletonChannel()
             val pivots = pivot.choose(universe).asOperator()

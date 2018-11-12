@@ -15,7 +15,6 @@ import cz.muni.fi.sybila.SolverModel
 import cz.muni.fi.sybila.output.Result
 import cz.muni.fi.sybila.output.ResultSet
 import cz.muni.fi.sybila.output.State
-import cz.muni.fi.sybila.runAnalysisWithSinks
 import java.io.File
 
 private val BLOCK = 1024
@@ -159,6 +158,7 @@ private class ModelSender(
 
 }
 
+/*
 fun main(args: Array<String>) {
     val fakeConfig = Config(disableHeuristic = true)
     val system = ModelSender()
@@ -224,4 +224,4 @@ fun main(args: Array<String>) {
     val json = Gson()
     File("/Users/daemontus/Downloads/TCP_sender.json").writeText(json.toJson(rs))
 }
-
+*/

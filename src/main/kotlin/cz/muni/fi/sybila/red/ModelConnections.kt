@@ -1,16 +1,9 @@
 package cz.muni.fi.sybila.red
 
-import com.github.sybila.Config
 import com.github.sybila.ode.generator.rect.Rectangle
 import com.github.sybila.ode.generator.rect.RectangleSolver
 import com.github.sybila.ode.generator.rect.rectangleOf
 import com.github.sybila.ode.model.OdeModel
-import com.google.gson.Gson
-import cz.muni.fi.sybila.RParams
-import cz.muni.fi.sybila.output.exportResults
-import cz.muni.fi.sybila.makeExplicit
-import cz.muni.fi.sybila.runAnalysis
-import java.io.File
 
 /**
  * Model which depends on the number of connections.
@@ -18,7 +11,7 @@ import java.io.File
 class ModelConnections(
         private val connectionsBounds: Pair<Double, Double> = 200.0 to 350.0,
         solver: RectangleSolver = RectangleSolver(rectangleOf(connectionsBounds.first, connectionsBounds.second))
-) : Model(solver = solver, varBounds = 200.0 to 850.0, thresholdCount = 2500) {
+) : TransitionModel(solver = solver, varBounds = 200.0 to 850.0, thresholdCount = 2500) {
 
     private val sim = ModelSimulation(this)
     private val paramBounds = irOf(connectionsBounds.first, connectionsBounds.second)
@@ -62,7 +55,7 @@ class ModelConnections(
                                 // Solve pL > drop.1
                                 // n > sqrt(drop.1) * ((dc + bm)/mk)
                                 val thres = Math.sqrt(drop.getL(0)) * ((d*c+b*m)/m*k)
-                                val interval = irOf(thres, Double.POSITIVE_INFINITY).intersect(paramBounds)?.roundTo(roundTo)
+                                val interval = irOf(thres, Double.POSITIVE_INFINITY).intersect(paramBounds)?.roundTo(roundTo.toDouble())
                                 if (interval != null) {
                                     params.add(rectangleOf(interval.getL(0), interval.getH(0)))
                                 } else {
@@ -84,7 +77,7 @@ class ModelConnections(
                                 // n^2 * (mk/dc)^2 < drop.2 -> n^2 < drop.2 * (mk/dc)^-2
                                 // n < sqrt(drop.2 * (mk/dc)^-2)
                                 val thres = Math.sqrt(drop.getH(0) * Math.pow((m * k)/(d * c), -2.0))
-                                val interval = irOf(0.0, thres).intersect(paramBounds)?.roundTo(roundTo)
+                                val interval = irOf(0.0, thres).intersect(paramBounds)?.roundTo(roundTo.toDouble())
                                 if (interval != null) {
                                     //println("$q goes to $qNext for $interval")
                                     params.add(rectangleOf(interval.getL(0), interval.getH(0)))
@@ -116,7 +109,7 @@ class ModelConnections(
                         // q + cd/m = nk/sqrt(p)
                         // sqrt(p) * (q + cd/m) * 1/k = n
                         val canJump = irOf(Math.sqrt(drop.getL(0)), Math.sqrt(drop.getH(0))) times (normalizedNextQueue plus (c*d/m).toIR()) times (1.0/k).toIR()
-                        val goTo = canJump.intersect(paramBounds)?.roundTo(roundTo)
+                        val goTo = canJump.intersect(paramBounds)?.roundTo(roundTo.toDouble())
                         if (goTo != null) {
                             if(print) println("$q goes to $qNext for $goTo")
                             params.add(rectangleOf(goTo.getL(0), goTo.getH(0)))
@@ -157,6 +150,7 @@ class ModelConnections(
 
 }
 
+/*
 fun main(args: Array<String>) {
     val fakeConfig = Config()
     val system = ModelConnections()
@@ -166,4 +160,4 @@ fun main(args: Array<String>) {
 
     val json = Gson()
     File("/Users/daemontus/Downloads/RED_connections.json").writeText(json.toJson(rs))
-}
+}*/

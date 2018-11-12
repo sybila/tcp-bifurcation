@@ -125,8 +125,8 @@ class IR(
         }
     }
 
-    fun roundTo(places: Int): IR {
-        val precision = Math.pow(10.0, places.toDouble())
+    fun roundTo(places: Double): IR {
+        val precision = Math.pow(10.0, places)
         return IR(DoubleArray(2*dimensions) { i ->
             if (i%2 == 0) coordinates[i].roundDown(precision) else coordinates[i].roundUp(precision)
         })
@@ -222,4 +222,3 @@ fun Double.asI(): Interval = Interval(this, this)
 
 private fun min(vararg x: Double): Double = x.fold(Double.POSITIVE_INFINITY) { a, i -> if (a < i) a else i }
 private fun max(vararg x: Double): Double = x.fold(Double.NEGATIVE_INFINITY) { a, i -> if (a > i) a else i }
-

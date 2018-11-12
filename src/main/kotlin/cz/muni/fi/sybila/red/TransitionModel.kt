@@ -8,10 +8,15 @@ import com.github.sybila.huctl.Formula
 import com.github.sybila.ode.generator.IntervalSolver
 import com.github.sybila.ode.generator.rect.RectangleSolver
 import com.github.sybila.ode.model.OdeModel
-import cz.muni.fi.sybila.RParams
 import cz.muni.fi.sybila.SolverModel
 
-abstract class Model(
+/**
+ * A simple base class which requires an array of parametrised transitions and then transforms them
+ * to proper transition objects.
+ *
+ * It also constructs basic state space thresholds and states.
+ */
+abstract class TransitionModel(
         solver: RectangleSolver,
         private val thresholdCount: Int = 1000,
         protected val varBounds: Pair<Double, Double> = 300.0 to 500.0,

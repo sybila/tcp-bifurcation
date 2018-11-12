@@ -1,5 +1,8 @@
 package cz.muni.fi.sybila.red
 
+/**
+ * A simple simulation of the RED model.
+ */
 class ModelSimulation(
         constants: Constants
 ) : Constants by constants {

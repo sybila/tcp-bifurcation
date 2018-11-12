@@ -1,14 +1,13 @@
 package cz.muni.fi.sybila.red
 
 import com.github.sybila.Config
+import com.github.sybila.ExplicitOdeFragment
 import com.github.sybila.ode.generator.rect.RectangleSolver
 import com.github.sybila.ode.generator.rect.rectangleOf
 import com.github.sybila.ode.model.OdeModel
 import com.google.gson.Gson
-import cz.muni.fi.sybila.RParams
+import cz.muni.fi.sybila.*
 import cz.muni.fi.sybila.output.exportResults
-import cz.muni.fi.sybila.makeExplicit
-import cz.muni.fi.sybila.runAnalysis
 import java.io.File
 
 /**
@@ -26,7 +25,7 @@ import java.io.File
 class ModelWeight(
         private val weightBounds: Pair<Double, Double> = 0.1 to 0.2,
         solver: RectangleSolver = RectangleSolver(rectangleOf(weightBounds.first, weightBounds.second))
-) : Model(solver = solver, varBounds = 300.0 to 600.0, thresholdCount = 2500) {
+) : TransitionModel(solver = solver, varBounds = 300.0 to 600.0, thresholdCount = 2500) {
 
     private val sim = ModelSimulation(this)
     private val paramBounds = irOf(weightBounds.first, weightBounds.second)
@@ -34,7 +33,7 @@ class ModelWeight(
     // monotonic increasing - we can just eval
     private fun dropProbability(q: IR) = irOf(sim.dropProbability(q.getL(0)), sim.dropProbability(q.getH(0)))
 
-    // monotonic decreasing - we can just eval
+    // monotonic decreasing - we can just eval in reversed order
     private fun nextQueue(p: IR) = irOf(sim.nextQueue(p.getH(0)), sim.nextQueue(p.getL(0)))
 
     override val transitionArray: Array<Array<RParams?>> = Array(stateCount) { from ->
@@ -46,10 +45,10 @@ class ModelWeight(
             error("State $q jumps to $postImage.")
         }
         Array<RParams?>(stateCount) { to ->
-            if (from % 100 == 0 && to == 0) println("transitions: $from/${states.size}")
+            if (from % 100 == 0 && to == 0) println("Computing transitions: $from/${states.size}")
             val qNext = states[to]
             val edgeParams = ((qNext minus q) divide (nextQueue minus q))
-            val paramsRestricted = edgeParams.mapNotNull { it.intersect(paramBounds)?.roundTo(3) }
+            val paramsRestricted = edgeParams.mapNotNull { it.intersect(paramBounds)?.roundTo(3.4) }
             paramsRestricted.mapTo(HashSet(paramsRestricted.size)) {
                 rectangleOf(it.getL(0), it.getH(0))
             }
@@ -70,12 +69,35 @@ class ModelWeight(
 }
 
 fun main(args: Array<String>) {
+    val start = System.currentTimeMillis()
     val fakeConfig = Config()
     val system = ModelWeight()
 
-    val r = system.makeExplicit(fakeConfig).runAnalysis(fakeConfig)
-    val rs = system.exportResults(system.fakeOdeModel, mapOf("all" to listOf(r)))
+    println("========== COMPUTE TRANSITION SYSTEM ==========")
+
+    val transitionSystem = ExplicitOdeFragment(
+            solver = system, stateCount = system.stateCount,
+            pivotFactory = structureAndCardinalityPivotChooserFactory(),
+            successors = system.exportSuccessors(), predecessors = system.exportPredecessors()
+    )
+
+    println("========== COMPUTE TERMINAL COMPONENTS ==========")
+
+    val algorithm = Algorithm(config = fakeConfig, allStates = transitionSystem,
+            initialUniverse = null, postProcessor = null)
+    algorithm.computeComponents()
+    algorithm.close()
+
+    println("========== PRINT RESULTS ==========")
+
+    val rs = system.exportResults(system.fakeOdeModel,
+            algorithm.store.getComponentMapping(algorithm.count).mapIndexed { index, stateMap ->
+                "${index+1} tSCC(s)" to listOf(stateMap)
+            }.toMap()
+    )
 
     val json = Gson()
     File("/Users/daemontus/Downloads/RED_weight.json").writeText(json.toJson(rs))
+
+    println("========== ELAPSED: ${(System.currentTimeMillis() - start)/1000}s ==========")
 }

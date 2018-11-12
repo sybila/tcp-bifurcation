@@ -23,9 +23,12 @@ abstract class TransitionModel(
         constants: Constants = ConstDefault
 ) : SolverModel<RParams>, Constants by constants, IntervalSolver<RParams> by solver, Solver<RParams> by solver {
 
+    var smallComponentStateCount: Int = 0
+
     protected val thresholds = run {
         val (min, max) = varBounds
         val step = (max - min) / (thresholdCount)
+        smallComponentStateCount = Math.floor((0.01 * b) / step).toInt()
         (0 until thresholdCount).map { i -> min + step*i } //+ max
     }
 

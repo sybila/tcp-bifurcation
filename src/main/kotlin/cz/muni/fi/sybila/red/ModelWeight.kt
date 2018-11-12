@@ -1,7 +1,11 @@
 package cz.muni.fi.sybila.red
 
 import com.github.sybila.Config
+import com.github.sybila.Count
 import com.github.sybila.ExplicitOdeFragment
+import com.github.sybila.checker.Solver
+import com.github.sybila.checker.StateMap
+import com.github.sybila.checker.map.mutable.HashStateMap
 import com.github.sybila.ode.generator.rect.RectangleSolver
 import com.github.sybila.ode.generator.rect.rectangleOf
 import com.github.sybila.ode.model.OdeModel
@@ -48,7 +52,7 @@ class ModelWeight(
             if (from % 100 == 0 && to == 0) println("Computing transitions: $from/${states.size}")
             val qNext = states[to]
             val edgeParams = ((qNext minus q) divide (nextQueue minus q))
-            val paramsRestricted = edgeParams.mapNotNull { it.intersect(paramBounds)?.roundTo(3.4) }
+            val paramsRestricted = edgeParams.mapNotNull { it.intersect(paramBounds)?.roundTo(3.0) }
             paramsRestricted.mapTo(HashSet(paramsRestricted.size)) {
                 rectangleOf(it.getL(0), it.getH(0))
             }
@@ -83,21 +87,68 @@ fun main(args: Array<String>) {
 
     println("========== COMPUTE TERMINAL COMPONENTS ==========")
 
+    println("States in a small component: ${system.smallComponentStateCount}")
+
+    val componentDivision = object : Algorithm.OnComponent<RParams>, Solver<RParams> by system {
+
+        val smallComponents = HashMap<Int, RParams>()
+        val oscillation = HashMap<Int, RParams>()
+        val bigComponets = HashMap<Int, RParams>()
+
+        override fun onComponent(component: Map<Int, RParams>) {
+            //val allParams = component.values.fold(ff) { a, b -> a or b }
+            /*val count = Count(system)
+            component.values.forEach { count.push(it) }
+            val smallComponent = (1..system.smallComponentStateCount).fold(ff) { colors, c ->
+                colors or count[c]
+            }
+            println("Small: ${smallComponent}")
+            component.forEach { s, p ->
+                val isSmall = p and smallComponent
+                if (isSmall.isSat()) smallComponents.putOrUnion(s, isSmall)
+            }*/
+            component.forEach { t, u ->
+                smallComponents.putOrUnion(t, u)
+            }
+        }
+
+        fun MutableMap<Int, RParams>.putOrUnion(key: Int, values: RParams) {
+            if (key in this) {
+                this[key] = this[key]!! or values
+            } else this[key] = values
+        }
+
+    }
+
     val algorithm = Algorithm(config = fakeConfig, allStates = transitionSystem,
-            initialUniverse = null, postProcessor = null)
+            initialUniverse = null, postProcessor = componentDivision)
     algorithm.computeComponents()
     algorithm.close()
 
     println("========== PRINT RESULTS ==========")
 
-    val rs = system.exportResults(system.fakeOdeModel,
-            algorithm.store.getComponentMapping(algorithm.count).mapIndexed { index, stateMap ->
-                "${index+1} tSCC(s)" to listOf(stateMap)
-            }.toMap()
-    )
+    // Extract small components
+    system.run {
+        val count = Count(system)
+        algorithm.store.components.values.forEach { count.push(it) }
+        val smallComponentParams = (1..system.smallComponentStateCount).fold(system.ff) { colors, c ->
+            colors or count[c]
+        }
+        val smallComponent = HashStateMap(ff, algorithm.store.components.mapNotNull { (s, p) ->
+            (s to (p and smallComponentParams)).takeIf { it.second.isSat() }
+        }.toMap())
 
-    val json = Gson()
-    File("/Users/daemontus/Downloads/RED_weight.json").writeText(json.toJson(rs))
+        val rs = system.exportResults(system.fakeOdeModel,
+                (algorithm.store.getComponentMapping(algorithm.count).mapIndexed { index, stateMap ->
+                    "${index+1} tSCC(s)" to listOf(stateMap)
+                } +
+                        listOf("small" to listOf(smallComponent))).toMap()
+        )
 
-    println("========== ELAPSED: ${(System.currentTimeMillis() - start)/1000}s ==========")
+        val json = Gson()
+        File("/Users/daemontus/Downloads/RED_weight.json").writeText(json.toJson(rs))
+
+        println("========== ELAPSED: ${(System.currentTimeMillis() - start)/1000}s ==========")
+    }
+
 }

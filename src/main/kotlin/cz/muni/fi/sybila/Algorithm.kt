@@ -27,7 +27,7 @@ internal open class Algorithm<T: Any>(
 ) : Closeable {
 
     val count = Count(allStates)
-    val store = ComponentStore(allStates)
+    val store = ComponentStorage(allStates)
 
     private val executor = Executors.newFixedThreadPool(config.parallelism)
     protected val pending = ArrayList<Future<*>>()

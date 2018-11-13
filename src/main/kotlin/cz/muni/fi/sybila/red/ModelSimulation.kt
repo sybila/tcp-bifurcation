@@ -30,8 +30,8 @@ class ModelSimulation(
 }
 
 fun main(args: Array<String>) {
-    var q = 268.0
-    val sim = ModelSimulation(Const(n = 340.0))
+    var q = 200.0
+    val sim = ModelSimulation(Const(n = 240.0))
     repeat(1000) {
         q = sim.average(q)
         println(q)

@@ -15,7 +15,10 @@ class ComponentStorage<T: Any>(
         synchronized(this) {
             solver.run {
                 for ((k, v) in component.entries()) {
-                    components[k] = (components.getOrDefault(k, ff) or (v and bound))
+                    val newParams = (components.getOrDefault(k, ff) or (v and bound))
+                    if (newParams.isSat()) {
+                        components[k] = newParams
+                    }
                 }
             }
         }

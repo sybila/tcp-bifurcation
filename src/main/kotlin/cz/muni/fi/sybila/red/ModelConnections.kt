@@ -12,7 +12,7 @@ import java.io.File
 class ModelConnections(
         private val connectionsBounds: Pair<Double, Double> = 200.0 to 300.0,
         solver: RectangleSolver = RectangleSolver(rectangleOf(connectionsBounds.first, connectionsBounds.second))
-) : TransitionModel(solver = solver, varBounds = 250.0 to 800.0, thresholdCount = 5000) {
+) : TransitionModel(solver = solver, varBounds = 250.0 to 1000.0, thresholdCount = 200) {
 
     private val sim = ModelSimulation(this)
     private val paramBounds = irOf(connectionsBounds.first, connectionsBounds.second)
@@ -29,6 +29,7 @@ class ModelConnections(
         val drop = dropProbability(fromQ)
         if (from % 100 == 0) println("transitions: $from/${states.size}")
         Array<RParams?>(stateCount) { to ->
+            val print = from == 50 && to == 31
             val toQ = states[to]
             val transitionParams = HashSet<Rectangle>()
             // We have to consider three piece-wise cases. Fortunately, in two cases, the function is constant.
@@ -48,9 +49,13 @@ class ModelConnections(
             // tL <= n -> drop <= pL
             val caseOne = irOf(thresholdLow, Double.POSITIVE_INFINITY).intersect(paramBounds)
             // tL > n > tH -> pL <= drop <= pU, note that such value does not need to exist
-            val caseTwo = if (thresholdHigh < thresholdLow) irOf(thresholdHigh, thresholdLow).intersect(paramBounds) else null
+            val moreThan = Math.sqrt(drop.getL(0)) * ((d*c)/(m*k))
+            val lessThan = Math.sqrt(drop.getH(0)) * ((d*c + b*m)/(m*k))
+            val caseTwo = irOf(moreThan, lessThan).intersect(paramBounds)
             // n <= tU -> pU <= drop
             val caseThree = irOf(Double.NEGATIVE_INFINITY, thresholdHigh).intersect(paramBounds)
+
+            if (print) println("Cases: $caseOne, $caseTwo $caseThree")
 
             // Now we have have the bounds on parameters, next we check if the transitions are even possible.
 
@@ -73,26 +78,39 @@ class ModelConnections(
                 if (result.intersect(toQ) != null) transitionParams.add(bound.roundTo(precision).toRectangle())
             }
             caseTwo?.let { bound ->
-                // Case two is a bit more tricky, since we also want to reduce the bound second time
-                // to remove parameters which can jump out of toQ.
-                // First we need to compute the value we want to obtain from our function in order to jump to toQ
-                // i.e. invert the rolling average.
-                // toQ = (1-w)*fromQ + w*nextQ
-                // (toQ - (1-w)*fromQ)/w = nextQ
-                val nextQ = irOf(
-                        (toQ.getL(0) - (1-w)*fromQ.getL(0))/w,
-                        (toQ.getH(0) - (1-w)*fromQ.getH(0))/w
-                )
-                // Note: we know the function is monotone and decreasing in drop, hence we can simplify the reduction
-                // to the two endpoints of drop interval. We also know it is increasing in n (on the considered interval).
-                // nextQ = (n*k)/sqrt(drop) - c*d/m
-                // nextQ[low] = (n*k)/sqrt(drop[high]) - c*d/m
-                // (nextQ[low] + c*d/m) * sqrt(drop[high]) / k = n[low]
-                // (nextQ[high] + c*d/m) * sqrt(drop[low]) / k = n[high]
-                val high = (nextQ.getL(0) + (c*d/m)) * Math.sqrt(drop.getH(0)) / k
-                val low = (nextQ.getH(0) + (c*d/m)) * Math.sqrt(drop.getL(0)) / k
-                val restricted = irOf(low, high).intersect(bound)?.roundTo(precision)
-                if (restricted != null) transitionParams.add(restricted.toRectangle())
+                val pLPart = (bound times (m*k/(d*c + b*m)).toIR())
+                val pUPart = (bound times (m*k/(d*c)).toIR())
+                val pL = pLPart times pLPart
+                val pU = pUPart times pUPart
+                val cutOffBottom = Math.max(drop.getL(0), pL.getL(0))
+                val cutOffTop = Math.min(drop.getH(0), pU.getH(0))
+                if (cutOffBottom < drop.getH(0) && cutOffTop > drop.getL(0)) {
+                    val reducedDrop = irOf(cutOffBottom, cutOffTop)
+                    // Case two is a bit more tricky, since we also want to reduce the bound second time
+                    // to remove parameters which can jump out of toQ.
+                    // First we need to compute the value we want to obtain from our function in order to jump to toQ
+                    // i.e. invert the rolling average.
+                    // toQ = (1-w)*fromQ + w*nextQ
+                    // (toQ - (1-w)*fromQ)/w = nextQ
+                    val nextQ = irOf(
+                            (toQ.getL(0) - (1-w)*fromQ.getL(0))/w,
+                            (toQ.getH(0) - (1-w)*fromQ.getH(0))/w
+                    )
+                    if (print) println("Possible next queue: $nextQ")
+                    // Note: we know the function is monotone and decreasing in drop, hence we can simplify the reduction
+                    // to the two endpoints of drop interval. We also know it is increasing in n (on the considered interval).
+                    // nextQ = (n*k)/sqrt(drop) - c*d/m
+                    // nextQ[low] = (n*k)/sqrt(drop[high]) - c*d/m
+                    // (nextQ[low] + c*d/m) * sqrt(drop[high]) / k = n[low]
+                    // (nextQ[high] + c*d/m) * sqrt(drop[low]) / k = n[high]
+                    val sqrtP = irOf(Math.sqrt(reducedDrop.getL(0)), Math.sqrt(reducedDrop.getH(0)))
+                    val n = (nextQ plus (c*d/m).toIR()) times sqrtP times (1/k).toIR()
+                    if (print) println("N: $n")
+                    //val high = (nextQ.getL(0) + (c*d/m)) * Math.sqrt(reducedDrop.getH(0)) / k
+                    //val low = (nextQ.getH(0) + (c*d/m)) * Math.sqrt(reducedDrop.getL(0)) / k
+                    val restricted = n.intersect(bound)?.roundTo(precision)
+                    if (restricted != null) transitionParams.add(restricted.toRectangle())
+                }
             }
             transitionParams.takeIf { it.isNotEmpty() }
         }
@@ -212,6 +230,15 @@ class ModelConnections(
         }
     }*/*/
 
+    init {
+        transitionArray.forEachIndexed { index, transitions ->
+            transitions.forEachIndexed { target, params ->
+                if (params != null) {
+                    println("$index,${states[index]} -> $target,${states[target]} to $params")
+                }
+            }
+        }
+    }
 
     override val fakeOdeModel: OdeModel
         get() = OdeModel(

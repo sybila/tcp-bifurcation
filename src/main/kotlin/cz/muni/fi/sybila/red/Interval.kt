@@ -35,7 +35,7 @@ class IR(
      * Instead of direct subtraction, we provide an additive inverse. This should work without loosing precision.
      * Just remember to swap the coordinates.
      */
-    private fun additiveInverse(): IR {
+    fun additiveInverse(): IR {
         return IR(DoubleArray(2*dimensions) { i ->
             val dim = i / 2
             if (i%2 == 0) -coordinates[2*dim+1] else -coordinates[2*dim]

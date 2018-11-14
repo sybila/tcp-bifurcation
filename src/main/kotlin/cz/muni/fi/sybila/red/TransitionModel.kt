@@ -28,7 +28,7 @@ abstract class TransitionModel(
     protected val thresholds = run {
         val (min, max) = varBounds
         val step = (max - min) / (thresholdCount)
-        smallComponentStateCount = Math.floor((0.01 * b) / step).toInt()
+        smallComponentStateCount = Math.floor((0.02 * b) / step).toInt()
         (0 until thresholdCount).map { i -> min + step*i } //+ max
     }
 

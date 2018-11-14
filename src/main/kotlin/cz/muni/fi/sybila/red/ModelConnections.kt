@@ -20,7 +20,7 @@ class ModelConnections(
     // monotonic increasing - we can just eval
     private fun dropProbability(q: IR) = irOf(sim.dropProbability(q.getL(0)), sim.dropProbability(q.getH(0)))
 
-    private val precision: Double = 1.0
+    private val precision: Double = 0.0
 
     private fun IR.toRectangle() = rectangleOf(getL(0), getH(0))
 

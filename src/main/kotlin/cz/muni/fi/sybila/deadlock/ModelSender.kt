@@ -12,6 +12,7 @@ import com.github.sybila.ode.generator.NodeEncoder
 import com.github.sybila.ode.model.OdeModel
 import com.google.gson.Gson
 import cz.muni.fi.sybila.SolverModel
+import cz.muni.fi.sybila.extractSinks
 import cz.muni.fi.sybila.output.Result
 import cz.muni.fi.sybila.output.ResultSet
 import cz.muni.fi.sybila.output.State
@@ -40,11 +41,11 @@ private class ModelSender(
         val states = HashSet<TCPState>()
         states.add(init)
         var frontier = setOf(init)
-        val s = 4
-        val r = 6
+        val s = 8
+        val r = 8
         stateMap[init] = iRectOf(1,s,1,r).asParams()
         while (frontier.isNotEmpty()) {
-            println("States: ${states.size}")
+            println("States: ${states.size} frontier: ${frontier.size}")
             states.addAll(frontier)
             val newFrontier = HashSet<TCPState>()
             frontier.forEach { source ->
@@ -158,15 +159,19 @@ private class ModelSender(
 
 }
 
-/*
+
 fun main(args: Array<String>) {
     val fakeConfig = Config(disableHeuristic = true)
     val system = ModelSender()
 
-    val (full, r) = system.makeExplicitInt(fakeConfig).runAnalysisWithSinks(fakeConfig, HashStateMap(system.ff, system.stateMap.map {
+    /*val (full, r) = system.makeExplicitInt(fakeConfig).runAnalysisWithSinks(fakeConfig, HashStateMap(system.ff, system.stateMap.map {
         system.stateToIndex[it.key]!! to it.value
     }.toMap()))
-    println("Component: ${r.entries().asSequence().count()}")
+    println("Component: ${r.entries().asSequence().count()}")*/
+    val allStates = system.stateMap.map {
+        system.stateToIndex[it.key]!! to it.value
+    }.toMap()
+    val r = HashStateMap(system.ff, allStates.extractSinks(system.makeExplicitInt(fakeConfig)))
     /*val one = iRectOf(4,4,1,1).asParams()
     for ((s, p) in r.entries()) {
         system.run {
@@ -224,4 +229,4 @@ fun main(args: Array<String>) {
     val json = Gson()
     File("/Users/daemontus/Downloads/TCP_sender.json").writeText(json.toJson(rs))
 }
-*/
+

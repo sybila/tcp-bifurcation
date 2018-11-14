@@ -1,4 +1,4 @@
-package cz.muni.fi.sybila.red
+package cz.muni.fi.sybila
 
 import com.github.sybila.Count
 import com.github.sybila.checker.Model
@@ -100,5 +100,24 @@ fun <T: Any> Map<Int, T>.extractSmallComponents(ts: Model<T>, threshold: Int): P
             (s to (p and bigComponentParams)).takeIf { it.second.isSat() }
         }.toMap()
         return smallComponent to bigComponent
+    }
+}
+
+fun <T: Any> Map<Int, T>.extractSinks(ts: Model<T>): Map<Int, T> {
+    val map = this
+    println("Extract one state components")
+    ts.run {
+        val result = HashMap<Int, T>()
+        for (s in 0 until stateCount) {
+            if (s % 100 == 0) println("Progress: $s / $stateCount")
+            val nodeParams = map[s] ?: ff
+            val sinkParams = s.successors(true).asSequence().fold(nodeParams) { sinkParams, (t, _, p) ->
+                 sinkParams and (if (t == s) tt else p.not())
+            }
+            if (sinkParams.isSat()) {
+                result[s] = sinkParams
+            }
+        }
+        return result
     }
 }

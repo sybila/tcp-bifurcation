@@ -6,11 +6,8 @@ import com.github.sybila.checker.StateMap
 import com.github.sybila.checker.map.mutable.HashStateMap
 import com.github.sybila.ode.generator.rect.Rectangle
 import com.google.gson.Gson
-import cz.muni.fi.sybila.Algorithm
-import cz.muni.fi.sybila.exportPredecessors
-import cz.muni.fi.sybila.exportSuccessors
+import cz.muni.fi.sybila.*
 import cz.muni.fi.sybila.output.exportResults
-import cz.muni.fi.sybila.structureAndCardinalityPivotChooserFactory
 import java.io.File
 
 typealias RParams = MutableSet<Rectangle>

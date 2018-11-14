@@ -31,8 +31,8 @@ class TCPTransitionSystem(
 
         We use R and S to refer to actual buffer size (i.e. R = r * SCALE * BLOCK)
      */
-        val s: Pair<Int, Int> = 1 to 16,
-        val r: Pair<Int, Int> = 1 to 16,
+        val s: Pair<Int, Int> = 1 to 8,
+        val r: Pair<Int, Int> = 1 to 8,
         // Size of one packet of data (minus header)
         // ATM network: 9204, Ethernet network: 1460
         val MSS: Int = 9204,

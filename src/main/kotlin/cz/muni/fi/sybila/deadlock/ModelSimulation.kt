@@ -3,7 +3,7 @@ package cz.muni.fi.sybila.deadlock
 import kotlin.math.min
 
 private val S = 1024 * 24
-private val R = 1024 * 48
+private val R = 1024 * 52
 private val BLOCK = 1024
 private val MSS = 9204
 

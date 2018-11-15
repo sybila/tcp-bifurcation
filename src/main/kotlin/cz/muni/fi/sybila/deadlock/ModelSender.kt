@@ -23,52 +23,51 @@ private val MSS = 9204
 private val rMult = 4
 private val R = 1024 * rMult
 
+val max = 64
+
 private class ModelSender(
-        solver: IntRectSolver = IntRectSolver(IntRect(intArrayOf(1, 16, 1, 16)))
+        solver: IntRectSolver = IntRectSolver(IntRect(intArrayOf(1, max, 1, max)))
 ) : SolverModel<IParams>, IntervalSolver<IParams> by solver, Solver<IParams> by solver {
 
     private val model = TCPTransitionSystem()
 
-    val states = ArrayList<TCPState>()
-    val stateMap = HashMap<TCPState, IParams>()
-    val successor = HashMap<TCPState, List<TCPState>>()
-    val predecessor = HashMap<TCPState, List<TCPState>>()
-    private val transitions = HashMap<Pair<TCPState, TCPState>, IParams>()
+    val indexToState = ArrayList<TCPState>()
+    val stateToIndex = HashMap<TCPState, Int>()
+    val stateParams = HashMap<TCPState, IParams>()
+    val transitionParams = HashMap<Pair<TCPState, TCPState>, IParams>()
+    val successors = ArrayList<IntArray?>()
 
     init {
         println("Computing state space!")
         val init = TCPState(0, emptyList(), 0, emptyList())
-        val states = HashSet<TCPState>()
-        states.add(init)
+        registerState(init)
         var frontier = setOf(init)
-        val s = 8
-        val r = 8
-        stateMap[init] = iRectOf(1,s,1,r).asParams()
+        val s = 48
+        val r = 48
+        stateParams[init] = iRectOf(1,s,1,r).asParams()
         while (frontier.isNotEmpty()) {
-            println("States: ${states.size} frontier: ${frontier.size}")
-            states.addAll(frontier)
+            println("States: ${indexToState.size} frontier: ${frontier.size}")
             val newFrontier = HashSet<TCPState>()
             frontier.forEach { source ->
-                val sourceParams = stateMap[source]!!
+                // source is registered when it is added to the frontier
+                val sourceParams = stateParams[source]!!
                 val targets = model.successors(source)
-                val print = source == TCPState(toSend=1024, sent= emptyList(), toAck=0, acked= emptyList())
-                targets.forEach { (target, p) ->
-                    val transitionParams = sourceParams and p
-                    if (transitionParams.isSat()) {
-                        if (stateMap.putOrUnion(target, transitionParams)) {
-                            states.add(target); newFrontier.add(target)
+                ensureSuccessors(source, targets.size)
+                targets.forEachIndexed { i, (target, p) ->
+                    val transition = sourceParams and p
+                    if (transition.isSat()) {
+                        val cachedTarget = registerState(target)
+                        if (stateParams.putOrUnion(cachedTarget, transition)) {
+                            newFrontier.add(cachedTarget)
                         }
-                        transitions.putOrUnion(source to target, transitionParams)
-                        registerTransition(source, target)
+                        transitionParams.putOrUnion((source to cachedTarget), transition)
+                        registerTransition(source, cachedTarget, i)
                     }
                 }
             }
             frontier = newFrontier
         }
-        this.states.addAll(states)
     }
-
-    val stateToIndex = states.mapIndexed { index, s -> s to index }.toMap()
 
     private fun <K> MutableMap<K, IParams>.putOrUnion(key: K, value: IParams): Boolean {
         val current = get(key)
@@ -82,11 +81,33 @@ private class ModelSender(
         return false
     }
 
-    private fun registerTransition(from: TCPState, to: TCPState) {
-        val succ = successor.getOrDefault(from, emptyList())
-        if (to !in succ) successor[from] = succ + to
-        val pred = predecessor.getOrDefault(to, emptyList())
-        if (from !in pred) predecessor[to] = pred + from
+    private fun ensureSuccessors(from: TCPState, maxSuccessors: Int) {
+        val index = stateToIndex[from]!!
+        if (successors.size < index+1) {
+            successors.ensureCapacity(index+1)
+            while (successors.size < index+1) successors.add(null)
+        }
+        if (successors[index] == null) {
+            successors[index] = IntArray(maxSuccessors) { -1 }
+        }
+    }
+
+    // returns a cached copy of the state or the given copy if the state is new
+    private fun registerState(state: TCPState): TCPState {
+        return if (state !in stateToIndex) {
+            indexToState.add(state)
+            val newIndex = indexToState.lastIndex
+            stateToIndex[state] = newIndex
+            state
+        } else {
+            indexToState[stateToIndex[state]!!]
+        }
+    }
+
+    private fun registerTransition(from: TCPState, to: TCPState, index: Int) {
+        val array = successors[stateToIndex[from]!!]!!
+        val toIndex = stateToIndex[to]!!
+        array[index] = toIndex
     }
 
     init {
@@ -98,14 +119,22 @@ private class ModelSender(
         }*/
     }
 
-    override val stateCount: Int = states.size
+    override val stateCount: Int = stateToIndex.size
 
     override fun Formula.Atom.Float.eval(): StateMap<IParams> { error("unimplemented") }
     override fun Formula.Atom.Transition.eval(): StateMap<IParams> { error("unimplemented") }
     override fun Int.predecessors(timeFlow: Boolean): Iterator<Transition<IParams>> = this.successors(!timeFlow)
 
     override fun Int.successors(timeFlow: Boolean): Iterator<Transition<IParams>> {
-        return if (timeFlow) {
+        if (!timeFlow) error("not implemented") else {
+            val s = successors[this]
+            return s?.asSequence()?.map { t ->
+                if (t >= 0) {
+                    Transition(t, DirectionFormula.Atom.True, transitionParams[indexToState[this] to indexToState[t]]!!)
+                } else null
+            }?.filterNotNull()?.iterator() ?: emptyList<Transition<IParams>>().iterator()
+        }
+        /*return if (timeFlow) {
             transitions.entries
                     .filter { it.key.first == states[this] }
                     .map { Transition(stateToIndex[it.key.second]!!, DirectionFormula.Atom.True, it.value) }
@@ -115,7 +144,7 @@ private class ModelSender(
                     .filter { it.key.second == states[this] }
                     .map { Transition(stateToIndex[it.key.first]!!, DirectionFormula.Atom.True, it.value) }
                     .iterator()
-        }
+        }*/
     }
 
     /*init {
@@ -125,7 +154,7 @@ private class ModelSender(
         }
     }*/
 
-    fun makeExplicitInt(
+    /*fun makeExplicitInt(
             config: Config
     ): ExplicitOdeFragment<MutableSet<IntRect>> {
         val step = (stateCount / 1000).coerceAtLeast(100)
@@ -155,7 +184,7 @@ private class ModelSender(
         }
 
         return ExplicitOdeFragment(this, stateCount, pivotChooser, successors, predecessors)
-    }
+    }*/
 
 }
 
@@ -168,10 +197,8 @@ fun main(args: Array<String>) {
         system.stateToIndex[it.key]!! to it.value
     }.toMap()))
     println("Component: ${r.entries().asSequence().count()}")*/
-    val allStates = system.stateMap.map {
-        system.stateToIndex[it.key]!! to it.value
-    }.toMap()
-    val r = HashStateMap(system.ff, allStates.extractSinks(system.makeExplicitInt(fakeConfig)))
+    val allStates = system.stateParams.map { (k, v) -> system.stateToIndex[k]!! to v }.toMap()
+    val r = HashStateMap(system.ff, allStates.extractSinks(system))
     /*val one = iRectOf(4,4,1,1).asParams()
     for ((s, p) in r.entries()) {
         system.run {
@@ -185,10 +212,10 @@ fun main(args: Array<String>) {
     val pIndices = pValues.mapIndexed { i, set -> set to i }.toMap()
 
     val ackThresholds = r.entries().asSequence().flatMap {
-        sequenceOf((system.states[it.first].toAck - 100).toDouble(), (system.states[it.first].toAck + 100).toDouble())
+        sequenceOf((system.indexToState[it.first].toAck - 100).toDouble(), (system.indexToState[it.first].toAck + 100).toDouble())
     }.toSet().sorted()
     val sendThresholds = r.entries().asSequence().flatMap {
-        sequenceOf((system.states[it.first].toSend - 100).toDouble(), (system.states[it.first].toSend + 100).toDouble())
+        sequenceOf((system.indexToState[it.first].toSend - 100).toDouble(), (system.indexToState[it.first].toSend + 100).toDouble())
     }.toSet().sorted()
     val fakeOdeModel = OdeModel(listOf(
             OdeModel.Variable("to_ack", ackThresholds.first() to ackThresholds.last(), ackThresholds, null, emptyList()),
@@ -201,9 +228,9 @@ fun main(args: Array<String>) {
             variables = listOf("to_ack", "to_send"),
             parameters = listOf("s_buf", "r_buf"),
             thresholds = listOf(ackThresholds, sendThresholds),
-            parameterBounds = listOf(doubleArrayOf(1.0, 16.0), doubleArrayOf(1.0, 16.0)),
+            parameterBounds = listOf(doubleArrayOf(1.0, (max+1).toDouble()), doubleArrayOf(1.0, (max+1).toDouble())),
             states = r.entries().asSequence().map { j ->
-                val s = system.states[j.first]
+                val s = system.indexToState[j.first]
                 // compute state id:
                 val iAck = ackThresholds.indexOf((s.toAck - 100).toDouble())
                 val iSend = sendThresholds.indexOf((s.toSend - 100).toDouble())

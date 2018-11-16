@@ -14,7 +14,7 @@ interface SolverModel<P : Any> : Model<P>, Solver<P>
 fun <T: Any> Model<T>.exportSuccessors(): Array<List<Transition<T>>> {
     val step = (stateCount / 500).coerceAtLeast(100)
     return Array(stateCount) { s ->
-        if (s % step == 0) println("Computing successor relation $s/$stateCount")
+        //if (s % step == 0) println("Computing successor relation $s/$stateCount")
         s.successors(true).asSequence().toList()
     }
 }
@@ -22,7 +22,7 @@ fun <T: Any> Model<T>.exportSuccessors(): Array<List<Transition<T>>> {
 fun <T: Any> Model<T>.exportPredecessors(): Array<List<Transition<T>>> {
     val step = (stateCount / 500).coerceAtLeast(100)
     return Array(stateCount) { s ->
-        if (s % step == 0) println("Computing predecessor relation $s/$stateCount")
+        //if (s % step == 0) println("Computing predecessor relation $s/$stateCount")
         s.predecessors(true).asSequence().toList()
     }
 }

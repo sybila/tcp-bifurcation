@@ -9,13 +9,13 @@ import java.io.File
  * A model which combines two parameters - weight and number of connections.
  */
 class ModelTwoParams(
-        private val weightBounds: Pair<Double, Double> = 0.15 to 0.1501,
-        private val connectionsBounds: Pair<Double, Double> = 200.0 to 300.0,
+        private val weightBounds: Pair<Double, Double> = 0.1 to 0.2,
+        private val connectionsBounds: Pair<Double, Double> = 250.0 to 251.0,
         solver: RectangleSolver = RectangleSolver(rectangleOf(
                 weightBounds.first, weightBounds.second,
                 connectionsBounds.first, connectionsBounds.second
         ))
-) : TransitionModel(solver = solver, varBounds = 250.0 to 1000.0, thresholdCount = 200) {
+) : TransitionModel(solver = solver, varBounds = 250.0 to 1000.0, thresholdCount = 2000) {
 
     private val sim = ModelSimulation(this)
 
@@ -167,7 +167,7 @@ class ModelTwoParams(
         }
     }
 
-    init {
+    /*init {
         transitionArray.forEachIndexed { index, transitions ->
             transitions.forEachIndexed { target, params ->
                 if (params != null) {
@@ -175,7 +175,7 @@ class ModelTwoParams(
                 }
             }
         }
-    }
+    }*/
 
     override val fakeOdeModel: OdeModel
         get() = OdeModel(

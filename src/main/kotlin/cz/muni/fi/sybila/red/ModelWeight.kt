@@ -29,7 +29,7 @@ import java.io.File
 class ModelWeight(
         private val weightBounds: Pair<Double, Double> = 0.1 to 0.2,
         solver: RectangleSolver = RectangleSolver(rectangleOf(weightBounds.first, weightBounds.second))
-) : TransitionModel(solver = solver, varBounds = 250.0 to 1000.0, thresholdCount = 30) {
+) : TransitionModel(solver = solver, varBounds = 250.0 to 1000.0, thresholdCount = 3000) {
 
     private val sim = ModelSimulation(this)
     private val paramBounds = irOf(weightBounds.first, weightBounds.second)
@@ -57,7 +57,7 @@ class ModelWeight(
             val qNext = states[to]
             val edgeParams = ((qNext minus q) divide (nextQueue minus q))
             if (print) println("Edge: $edgeParams")
-            val paramsRestricted = edgeParams.mapNotNull { it.intersect(paramBounds)?.roundTo(3.0) }
+            val paramsRestricted = edgeParams.mapNotNull { it.intersect(paramBounds)?.roundTo(3.4) }
             if (print) println("Restricted: $paramsRestricted")
             paramsRestricted.mapTo(HashSet(paramsRestricted.size)) {
                 rectangleOf(it.getL(0), it.getH(0))
@@ -66,7 +66,7 @@ class ModelWeight(
     }
 
 
-    init {
+    /*init {
         transitionArray.forEachIndexed { index, transitions ->
             transitions.forEachIndexed { target, params ->
                 if (params != null) {
@@ -74,7 +74,7 @@ class ModelWeight(
                 }
             }
         }
-    }
+    }*/
 
     override val fakeOdeModel: OdeModel
         get() = OdeModel(

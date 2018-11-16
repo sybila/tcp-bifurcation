@@ -20,7 +20,7 @@ class ModelSimulation(
 
     fun nextQueue(p: Double) = when (p) {
         in 0.0..pL -> b
-        in pL..pU -> (n*k)/Math.sqrt(p) - (c*d)/m
+        in pL..pU -> kotlin.math.min(b, kotlin.math.max(0.0, (n*k)/Math.sqrt(p) - (c*d)/m))
         in pU..1.0 -> 0.0
         else -> error("Probability $p not in [0..1]")
     }.also { if (it !in 0.0..b) error("Queue size $it not in [0..B]") }

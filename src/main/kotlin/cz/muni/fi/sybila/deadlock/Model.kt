@@ -4,6 +4,8 @@ import com.github.sybila.checker.Solver
 import kotlin.math.max
 import kotlin.math.min
 
+const val MAX = 8
+
 /*
     Here, we store the general description of the transition system. Each specific model can then use this
     representation to create a transition system
@@ -31,8 +33,8 @@ class TCPTransitionSystem(
 
         We use R and S to refer to actual buffer size (i.e. R = r * SCALE * BLOCK)
      */
-        val s: Pair<Int, Int> = 1 to 64,
-        val r: Pair<Int, Int> = 1 to 64,
+        val s: Pair<Int, Int> = 1 to MAX,
+        val r: Pair<Int, Int> = 1 to MAX,
         // Size of one packet of data (minus header)
         // ATM network: 9204, Ethernet network: 1460
         val MSS: Int = 9204,
@@ -42,29 +44,28 @@ class TCPTransitionSystem(
 ) : Solver<IParams> by solver {
 
     // A scale factor is used to skip some parameter values
-    private val SCALE = 1
+    private val SCALE = 8
 
     val fullRect = iRectOf(s.first, s.second, r.first, r.second)
 
-    private val cache = HashMap<TCPState, List<Pair<TCPState, IParams>>>()
     fun successors(source: TCPState): List<Pair<TCPState, IParams>> {
         //if (source in cache) return cache[source]!!
-        val randomAck = source.sendRandomAck()
+        //val randomAck = source.sendRandomAck()
         val receiveNoAck = source.receiveNoAck()
         val receiveWithAck = source.receiveWithAck()
         val processAck = source.processAck()
         val sendFullPacket = source.sendFullPacket()
         val sendPartialPacket = source.sendPartialPacket()
-        val copyData = source.copyData((sendFullPacket?.second ?: ff) or (sendPartialPacket.fold(ff) { a, b -> a or b.second }))
+        val sentParams = (sendFullPacket?.second ?: ff) or (sendPartialPacket.fold(ff) { a, b -> a or b.second })
+        val copyData = source.copyData(sentParams)
         val result = ArrayList<Pair<TCPState, IParams>>()
-        randomAck?.let { result.add(randomAck) }
+        //randomAck?.let { result.add(randomAck) }
         receiveNoAck?.let { result.add(it) }
         receiveWithAck?.let { result.add(it) }
         processAck?.let { result.add(it) }
         sendFullPacket?.let { result.add(it) }
         result.addAll(sendPartialPacket)
         result.addAll(copyData)
-        //cache[source] == result
         return result
     }
 
@@ -100,6 +101,44 @@ class TCPTransitionSystem(
         return if (upperBound < r.first) null else {
             newState to iRectOf(s.first, s.second, r.first, min(r.second, upperBound)).asParams()
         }
+    }
+
+    fun TCPState.sendPacket(): List<Pair<TCPState, IParams>> {
+        if (toSend == 0 || sentData > 0) return emptyList()
+        /*
+            Try to send as much available data as possible, without considering Nagle's algorithm.
+         */
+        val results = ArrayList<Pair<TCPState, IParams>>()
+
+        val outstanding = sentData + toAck + ackedData
+        // First, consider we can send all available data - packet = min(MSS, toSend) and min(R,S) >= packet.
+        val maxPacket = min(MSS, toSend)
+        val outstandingAfterFullSend = outstanding + maxPacket
+        val windowSendAll = if (outstandingAfterFullSend % (BLOCK * SCALE) == 0) {
+            outstandingAfterFullSend / (BLOCK * SCALE)
+        } else {
+            outstandingAfterFullSend / (BLOCK * SCALE) + 1
+        }
+        val paramsSendAll = if (windowSendAll <= s.second && windowSendAll <= r.second) {
+            iRectOf(max(s.first, windowSendAll), s.second, max(r.first, windowSendAll), r.second).asParams()
+        } else ff
+        if (paramsSendAll.isSat()) {
+            results.add(copy(toSend = toSend - maxPacket, sent = sent + maxPacket) to paramsSendAll)
+        }
+
+        // Second we consider other situations where we can't send a full packet because we are limited by window size.
+        for (window in 1 until windowSendAll) {
+            if (window < s.first || window < r.first) continue  // window is not allowed
+            if (outstanding >= window * BLOCK * SCALE) continue // window is too small to send anything
+            val params = mutableSetOf(
+                    // S = window, R >= window                 S >= window, R = window
+                    iRectOf(window, window, window, r.second), iRectOf(window, s.second, window, window)
+            )
+            val packet = window * BLOCK * SCALE
+            results.add(copy(toSend = toSend - packet, sent = sent + packet) to params)
+        }
+
+        return results
     }
 
     fun TCPState.sendFullPacket(): Pair<TCPState, IParams>? {
@@ -166,7 +205,7 @@ class TCPTransitionSystem(
     }
 
     fun TCPState.sendRandomAck(): Pair<TCPState, IParams>? {
-        if (toAck == 0 || !canRandomAck) return null
+        if (toAck == 0 || !canRandomAck || sentData > 0 || ackedData > 0) return null
         return copy(toAck = 0, acked = acked + toAck, canRandomAck = false) to tt
     }
 

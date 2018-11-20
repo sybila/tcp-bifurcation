@@ -6,3 +6,7 @@ build
 out
 
 *.iml
+
+RED_weight.json
+RED_connections.json
+RED_weight_and_connections.json

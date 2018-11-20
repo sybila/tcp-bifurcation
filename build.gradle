@@ -38,3 +38,21 @@ compileKotlin {
 compileTestKotlin {
     kotlinOptions.jvmTarget = "1.8"
 }
+
+task runREDWeight(type:JavaExec) {
+    main = "cz.muni.fi.sybila.red.ModelWeightKt"
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs = ["-Xmx14g"]
+}
+
+task runREDConnections(type:JavaExec) {
+    main = "cz.muni.fi.sybila.red.ModelConnectionsKt"
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs = ["-Xmx14g"]
+}
+
+task runREDWeightAndConnections(type:JavaExec) {
+    main = "cz.muni.fi.sybila.red.ModelWeightAndConnectionsKt"
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs = ["-Xmx14g"]
+}

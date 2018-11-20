@@ -29,7 +29,7 @@ import java.io.File
 class ModelWeight(
         private val weightBounds: Pair<Double, Double> = 0.1 to 0.2,
         solver: RectangleSolver = RectangleSolver(rectangleOf(weightBounds.first, weightBounds.second))
-) : TransitionModel(solver = solver, varBounds = 250.0 to 1000.0, thresholdCount = 3000) {
+) : TransitionModel(solver = solver, varBounds = 300.0 to 600.0, thresholdCount = 3000) {
 
     private val sim = ModelSimulation(this)
     private val paramBounds = irOf(weightBounds.first, weightBounds.second)
@@ -50,31 +50,15 @@ class ModelWeight(
             error("State $q jumps to $postImage.")
         }
         Array<RParams?>(stateCount) { to ->
-            val print = (from == 5) && (to == 6)
-            if (print) println("Drop: $drop")
-            if (print) println("Next queue: $nextQueue")
             if (from % 100 == 0 && to == 0) println("Computing transitions: $from/${states.size}")
             val qNext = states[to]
             val edgeParams = ((qNext minus q) divide (nextQueue minus q))
-            if (print) println("Edge: $edgeParams")
             val paramsRestricted = edgeParams.mapNotNull { it.intersect(paramBounds)?.roundTo(3.4) }
-            if (print) println("Restricted: $paramsRestricted")
             paramsRestricted.mapTo(HashSet(paramsRestricted.size)) {
                 rectangleOf(it.getL(0), it.getH(0))
             }.takeIf { it.isSat() }
         }
     }
-
-
-    /*init {
-        transitionArray.forEachIndexed { index, transitions ->
-            transitions.forEachIndexed { target, params ->
-                if (params != null) {
-                    println("$index,${states[index]} -> $target,${states[target]} to $params")
-                }
-            }
-        }
-    }*/
 
     override val fakeOdeModel: OdeModel
         get() = OdeModel(
@@ -89,5 +73,5 @@ class ModelWeight(
 }
 
 fun main(args: Array<String>) {
-    runExperiment(ModelWeight(), File("/Users/daemontus/Downloads/RED_weight.json"))
+    runExperiment(ModelWeight(), File("RED_weight.json"))
 }

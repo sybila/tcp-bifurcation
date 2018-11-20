@@ -103,14 +103,14 @@ fun <T: Any> Map<Int, T>.extractSmallComponents(ts: Model<T>, threshold: Int): P
     }
 }
 
-fun <T: Any> Map<Int, T>.extractSinks(ts: Model<T>): Map<Int, T> {
+fun <T: Any> List<T>.extractSinks(ts: Model<T>): Map<Int, T> {
     val map = this
     println("Extract one state components")
     ts.run {
         val result = HashMap<Int, T>()
         for (s in 0 until stateCount) {
-            if (s % 100 == 0) println("Progress: $s / $stateCount")
-            val nodeParams = map[s] ?: ff
+            if (s % 1000 == 0) println("Progress: $s / $stateCount")
+            val nodeParams = map[s]// ?: ff
             val sinkParams = s.successors(true).asSequence().fold(nodeParams) { sinkParams, (t, _, p) ->
                  sinkParams and (if (t == s) tt else p.not())
             }

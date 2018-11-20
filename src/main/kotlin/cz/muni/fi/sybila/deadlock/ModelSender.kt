@@ -1,18 +1,16 @@
 package cz.muni.fi.sybila.deadlock
 
-import com.github.sybila.*
+import com.github.sybila.Config
 import com.github.sybila.checker.Solver
 import com.github.sybila.checker.StateMap
 import com.github.sybila.checker.Transition
 import com.github.sybila.checker.map.mutable.HashStateMap
-import com.github.sybila.huctl.DirectionFormula
 import com.github.sybila.huctl.Formula
 import com.github.sybila.ode.generator.IntervalSolver
 import com.github.sybila.ode.generator.NodeEncoder
 import com.github.sybila.ode.model.OdeModel
 import com.google.gson.Gson
 import cz.muni.fi.sybila.SolverModel
-import cz.muni.fi.sybila.extractSinks
 import cz.muni.fi.sybila.output.Result
 import cz.muni.fi.sybila.output.ResultSet
 import cz.muni.fi.sybila.output.State
@@ -23,45 +21,55 @@ private val MSS = 9204
 private val rMult = 4
 private val R = 1024 * rMult
 
-val max = 64
-
 private class ModelSender(
-        solver: IntRectSolver = IntRectSolver(IntRect(intArrayOf(1, max, 1, max)))
+        solver: IntRectSolver = IntRectSolver(IntRect(intArrayOf(1, MAX, 1, MAX)))
 ) : SolverModel<IParams>, IntervalSolver<IParams> by solver, Solver<IParams> by solver {
 
     private val model = TCPTransitionSystem()
 
     val indexToState = ArrayList<TCPState>()
     val stateToIndex = HashMap<TCPState, Int>()
-    val stateParams = HashMap<TCPState, IParams>()
-    val transitionParams = HashMap<Pair<TCPState, TCPState>, IParams>()
-    val successors = ArrayList<IntArray?>()
+    //val stateParams = HashMap<TCPState, IParams>()
+    //val transitionParams = HashMap<Pair<TCPState, TCPState>, IParams>()
+    val stateParams = ArrayList<IParams>()
+    //val transitionParams = ArrayList<Array<IParams>?>()
+    //val successors = ArrayList<IntArray?>()
+    val sinks = HashMap<Int, IParams>()
 
     init {
         println("Computing state space!")
         val init = TCPState(0, emptyList(), 0, emptyList())
         registerState(init)
         var frontier = setOf(init)
-        val s = 48
-        val r = 48
-        stateParams[init] = iRectOf(1,s,1,r).asParams()
+        val s = MAX
+        val r = MAX
+        extendStateParams(init, iRectOf(1,s,1,r).asParams())
+        var flip = true
         while (frontier.isNotEmpty()) {
-            println("States: ${indexToState.size} frontier: ${frontier.size}")
+            flip = !flip
+            if (flip) println("States: ${indexToState.size} frontier: ${frontier.size}")
             val newFrontier = HashSet<TCPState>()
             frontier.forEach { source ->
                 // source is registered when it is added to the frontier
-                val sourceParams = stateParams[source]!!
+                val sourceParams = stateParams[stateToIndex[source]!!]
                 val targets = model.successors(source)
-                ensureSuccessors(source, targets.size)
+                //ensureSuccessors(source, targets.size)
                 targets.forEachIndexed { i, (target, p) ->
                     val transition = sourceParams and p
                     if (transition.isSat()) {
                         val cachedTarget = registerState(target)
-                        if (stateParams.putOrUnion(cachedTarget, transition)) {
+                        if (extendStateParams(cachedTarget, transition)) {
                             newFrontier.add(cachedTarget)
                         }
-                        transitionParams.putOrUnion((source to cachedTarget), transition)
-                        registerTransition(source, cachedTarget, i)
+                        //registerTransition(source, cachedTarget, i, transition)
+                    }
+                }
+                val sinkParams = targets.fold(sourceParams) { sinkParams, (t, p) ->
+                    sinkParams and (if (t == source) tt else p.not())
+                }
+                if (sinkParams.isSat()) {
+                    synchronized(sinks) {
+                        sinks[s] = (sinks[s] ?: ff) or sinkParams
                     }
                 }
             }
@@ -81,7 +89,7 @@ private class ModelSender(
         return false
     }
 
-    private fun ensureSuccessors(from: TCPState, maxSuccessors: Int) {
+    /*private fun ensureSuccessors(from: TCPState, maxSuccessors: Int) {
         val index = stateToIndex[from]!!
         if (successors.size < index+1) {
             successors.ensureCapacity(index+1)
@@ -89,6 +97,28 @@ private class ModelSender(
         }
         if (successors[index] == null) {
             successors[index] = IntArray(maxSuccessors) { -1 }
+        }
+        if (transitionParams.size < index+1) {
+            transitionParams.ensureCapacity(index+1)
+            while (transitionParams.size < index+1) transitionParams.add(null)
+        }
+        if (transitionParams[index] == null) {
+            transitionParams[index] = Array(maxSuccessors) { ff }
+        }
+    }*/
+
+    private fun extendStateParams(state: TCPState, params: IParams): Boolean {
+        val stateIndex = stateToIndex[state]!!
+        if (stateParams.size < stateIndex+1) {
+            stateParams.ensureCapacity(stateIndex+1)
+            while (stateParams.size < stateIndex+1) stateParams.add(ff)
+        }
+        val current = stateParams[stateIndex]
+        return if (params.andNot(current)) {
+            stateParams[stateIndex] = params or current
+            true
+        } else {
+            false
         }
     }
 
@@ -104,11 +134,14 @@ private class ModelSender(
         }
     }
 
-    private fun registerTransition(from: TCPState, to: TCPState, index: Int) {
-        val array = successors[stateToIndex[from]!!]!!
+    /*private fun registerTransition(from: TCPState, to: TCPState, index: Int, params: IParams) {
+        val fromIndex = stateToIndex[from]!!
         val toIndex = stateToIndex[to]!!
+        val array = successors[fromIndex]!!
+        val paramArray = transitionParams[fromIndex]!!
         array[index] = toIndex
-    }
+        paramArray[index] = paramArray[index] or params
+    }*/
 
     init {
         /*states.forEachIndexed { index, s ->
@@ -126,14 +159,16 @@ private class ModelSender(
     override fun Int.predecessors(timeFlow: Boolean): Iterator<Transition<IParams>> = this.successors(!timeFlow)
 
     override fun Int.successors(timeFlow: Boolean): Iterator<Transition<IParams>> {
-        if (!timeFlow) error("not implemented") else {
+        error("not implemented")
+        /*if (!timeFlow) error("not implemented") else {
             val s = successors[this]
-            return s?.asSequence()?.map { t ->
+            return s?.asSequence()?.mapIndexed { index, t ->
                 if (t >= 0) {
-                    Transition(t, DirectionFormula.Atom.True, transitionParams[indexToState[this] to indexToState[t]]!!)
+                    val params = transitionParams[this]!![index]
+                    Transition(t, DirectionFormula.Atom.True, params)
                 } else null
             }?.filterNotNull()?.iterator() ?: emptyList<Transition<IParams>>().iterator()
-        }
+        }*/
         /*return if (timeFlow) {
             transitions.entries
                     .filter { it.key.first == states[this] }
@@ -197,8 +232,8 @@ fun main(args: Array<String>) {
         system.stateToIndex[it.key]!! to it.value
     }.toMap()))
     println("Component: ${r.entries().asSequence().count()}")*/
-    val allStates = system.stateParams.map { (k, v) -> system.stateToIndex[k]!! to v }.toMap()
-    val r = HashStateMap(system.ff, allStates.extractSinks(system))
+    //val allStates = system.stateParams//.mapIndexed { i, p -> i to p }.toMap()
+    val r = HashStateMap(system.ff, system.sinks/*allStates.extractSinks(system)*/)
     /*val one = iRectOf(4,4,1,1).asParams()
     for ((s, p) in r.entries()) {
         system.run {
@@ -228,7 +263,7 @@ fun main(args: Array<String>) {
             variables = listOf("to_ack", "to_send"),
             parameters = listOf("s_buf", "r_buf"),
             thresholds = listOf(ackThresholds, sendThresholds),
-            parameterBounds = listOf(doubleArrayOf(1.0, (max+1).toDouble()), doubleArrayOf(1.0, (max+1).toDouble())),
+            parameterBounds = listOf(doubleArrayOf(1.0, (MAX+1).toDouble()), doubleArrayOf(1.0, (MAX+1).toDouble())),
             states = r.entries().asSequence().map { j ->
                 val s = system.indexToState[j.first]
                 // compute state id:

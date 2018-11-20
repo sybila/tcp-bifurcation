@@ -25,7 +25,7 @@ Note that the full bifurcation diagram is obtained by combining the visualisatio
 various properties in the output file.
 
 *Resources: Note that some experiments can be resource intensive. Each experiment
-is configured to use at most 14GB of RAM. If this amount of memory is not 
+is configured to use at most 12GB of RAM. If this amount of memory is not 
 available, the experiment may fail. Also, experiments typically run from
 several minutes up to a few hours on a typical 4-core desktop CPU.*
 

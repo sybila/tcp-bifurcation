@@ -56,3 +56,27 @@ task runREDWeightAndConnections(type:JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     jvmArgs = ["-Xmx14g"]
 }
+
+task runTCPScale8WithAck(type:JavaExec) {
+    main = "cz.muni.fi.sybila.deadlock.ModelScale8WithAckKt"
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs = ["-Xmx14g"]
+}
+
+task runTCPScale8NoAck(type:JavaExec) {
+    main = "cz.muni.fi.sybila.deadlock.ModelScale8NoAckKt"
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs = ["-Xmx14g"]
+}
+
+task runTCPWithAck(type:JavaExec) {
+    main = "cz.muni.fi.sybila.deadlock.ModelWithAckKt"
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs = ["-Xmx14g"]
+}
+
+task runTCPNoAck(type:JavaExec) {
+    main = "cz.muni.fi.sybila.deadlock.ModelNoAckKt"
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs = ["-Xmx14g"]
+}

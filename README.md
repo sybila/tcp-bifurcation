@@ -35,3 +35,7 @@ repository (on Windows, substitute gradlew for gradlew.bat):
  - RED Weight: `./gradlew runREDWeight`
  - RED Connections: `./gradlew runREDConnections`
  - RED Both: `./gradlew runREDWeightAndConnections`
+ - TCP, 8KiB increments, cyclic timer off: `./gradlew runTCPScale8NoAck`
+ - TCP, 8KiB increments, cyclic timer on: `./gradlew runTCPScale8WithAck`
+ - TCP, 1KiB increments, cyclic timer off: `./gradlew runTCPNoAck`
+ - TCP, 1KiB increments, cyclic timer on: `./gradlew runTCPWithAck`

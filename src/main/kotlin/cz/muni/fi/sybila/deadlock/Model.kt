@@ -4,8 +4,6 @@ import com.github.sybila.checker.Solver
 import kotlin.math.max
 import kotlin.math.min
 
-const val MAX = 8
-
 /*
     Here, we store the general description of the transition system. Each specific model can then use this
     representation to create a transition system
@@ -28,11 +26,17 @@ data class TCPState(
 }
 
 class TCPTransitionSystem(
+        // A scale factor is used to skip some parameter values
+        private val SCALE: Int = 1,
+        // Maximal parameter bound
+        private val MAX: Int = 64,
+        // true if one random acknowledgement can be sent
+        private val randomAck: Boolean = true,
         /*
-        s and r are parameters which give the size of the send/receive buffer in BLOCK multiples
+            s and r are parameters which give the size of the send/receive buffer in BLOCK multiples
 
-        We use R and S to refer to actual buffer size (i.e. R = r * SCALE * BLOCK)
-     */
+            We use R and S to refer to actual buffer size (i.e. R = r * SCALE * BLOCK)
+        */
         val s: Pair<Int, Int> = 1 to MAX,
         val r: Pair<Int, Int> = 1 to MAX,
         // Size of one packet of data (minus header)
@@ -43,14 +47,10 @@ class TCPTransitionSystem(
         solver: Solver<IParams> = IntRectSolver(iRectOf(s.first, s.second, r.first, r.second))
 ) : Solver<IParams> by solver {
 
-    // A scale factor is used to skip some parameter values
-    private val SCALE = 8
-
     val fullRect = iRectOf(s.first, s.second, r.first, r.second)
 
     fun successors(source: TCPState): List<Pair<TCPState, IParams>> {
         //if (source in cache) return cache[source]!!
-        //val randomAck = source.sendRandomAck()
         val receiveNoAck = source.receiveNoAck()
         val receiveWithAck = source.receiveWithAck()
         val processAck = source.processAck()
@@ -59,7 +59,10 @@ class TCPTransitionSystem(
         val sentParams = (sendFullPacket?.second ?: ff) or (sendPartialPacket.fold(ff) { a, b -> a or b.second })
         val copyData = source.copyData(sentParams)
         val result = ArrayList<Pair<TCPState, IParams>>()
-        //randomAck?.let { result.add(randomAck) }
+        if (this.randomAck) {
+            val randomAck = source.sendRandomAck()
+            randomAck?.let { result.add(randomAck) }
+        }
         receiveNoAck?.let { result.add(it) }
         receiveWithAck?.let { result.add(it) }
         processAck?.let { result.add(it) }

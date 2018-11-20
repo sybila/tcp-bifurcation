@@ -10,3 +10,8 @@ out
 RED_weight.json
 RED_connections.json
 RED_weight_and_connections.json
+
+TCP_scale_8_with_ack.json
+TCP_scale_8_no_ack.json
+TCP_with_ack.json
+TCP_no_ack.json

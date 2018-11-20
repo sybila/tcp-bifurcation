@@ -27,7 +27,7 @@ various properties in the output file.
 *Resources: Note that some experiments can be resource intensive. Each experiment
 is configured to use at most 14GB of RAM. If this amount of memory is not 
 available, the experiment may fail. Also, experiments typically run from
-several minutes up to a few hours on a typical 4-core desktop processor.*
+several minutes up to a few hours on a typical 4-core desktop CPU.*
 
 In order to re-run the experiments, call the following commands in the root of this 
 repository (on Windows, substitute gradlew for gradlew.bat):
